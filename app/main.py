@@ -4,6 +4,11 @@ from fastapi.responses import JSONResponse
 
 # Core configuration
 from app.core.config import settings
+from app.api import api_router
+from app.core.database import Base, engine
+
+# Crear tablas si no existen
+Base.metadata.create_all(bind=engine)
 
 # Create FastAPI app
 app = FastAPI(
@@ -22,6 +27,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include API routes
+app.include_router(api_router)
 
 # Health check endpoints
 @app.get("/")

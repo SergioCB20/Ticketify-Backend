@@ -1,1 +1,3 @@
-# Permite que Python trate este directorio como un paquete.
+from .auth_service import AuthService
+
+__all__ = ["AuthService"]
