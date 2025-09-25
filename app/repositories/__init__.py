@@ -1,1 +1,3 @@
-# Permite que Python trate este directorio como un paquete.
+from .user_repository import UserRepository
+
+__all__ = ["UserRepository"]
