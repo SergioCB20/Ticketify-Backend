@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime, Enum
+from sqlalchemy import Column, String, Boolean, DateTime, Enum, Table, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -6,67 +6,102 @@ import uuid
 import enum
 from app.core.database import Base
 
+# Enums actualizados según diagrama
 class UserRole(str, enum.Enum):
-    ADMIN = "ADMIN"
-    ORGANIZER = "ORGANIZER"
-    CUSTOMER = "CUSTOMER"
+    ATTENDEE = "ATTENDEE"  # Cliente/Asistente
+    ORGANIZER = "ORGANIZER"  # Organizador
+
+class AdminRole(str, enum.Enum):
+    SUPER_ADMIN = "SUPER_ADMIN"
+    SUPPORT_ADMIN = "SUPPORT_ADMIN"
+    SECURITY_ADMIN = "SECURITY_ADMIN"
+    CONTENT_ADMIN = "CONTENT_ADMIN"
+
+# Tabla intermedia para relación Many-to-Many User-Role
+user_roles = Table(
+    'user_roles',
+    Base.metadata,
+    Column('user_id', UUID(as_uuid=True), ForeignKey('users.id'), primary_key=True),
+    Column('role_id', UUID(as_uuid=True), ForeignKey('roles.id'), primary_key=True)
+)
 
 class User(Base):
     __tablename__ = "users"
     
+    # Primary key
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    first_name = Column(String(50), nullable=False)
-    last_name = Column(String(50), nullable=False)
+    
+    # Basic information (según diagrama)
     email = Column(String(255), unique=True, index=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)
-    role = Column(Enum(UserRole), default=UserRole.CUSTOMER, nullable=False)
-    is_active = Column(Boolean, default=True, nullable=False)
-    is_verified = Column(Boolean, default=False, nullable=False)
-    avatar = Column(String(255), nullable=True)
+    password = Column(String(255), nullable=False)  # Renombrado de hashed_password
+    firstName = Column(String(100), nullable=False)  # Renombrado de first_name
+    lastName = Column(String(100), nullable=False)  # Renombrado de last_name
+    phoneNumber = Column(String(20), nullable=True)  # NUEVO
+    documentId = Column(String(50), nullable=True)  # NUEVO
+    profilePhoto = Column(String(500), nullable=True)  # Renombrado de avatar
+    
+    # Status
+    isActive = Column(Boolean, default=True, nullable=False)  # Renombrado de is_active
     
     # Timestamps
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-    
-    # Email verification
-    verification_token = Column(String(255), nullable=True)
-    verification_token_expires = Column(DateTime(timezone=True), nullable=True)
-    
-    # Password reset
-    reset_token = Column(String(255), nullable=True)
-    reset_token_expires = Column(DateTime(timezone=True), nullable=True)
-    
-    # Login tracking
-    last_login = Column(DateTime(timezone=True), nullable=True)
-    login_count = Column(String, default="0")
+    createdAt = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    lastLogin = Column(DateTime(timezone=True), nullable=True)
     
     # Relationships
+    roles = relationship("Role", secondary=user_roles, back_populates="users")
     organized_events = relationship("Event", back_populates="organizer", foreign_keys="Event.organizer_id")
-    purchases = relationship("Purchase", back_populates="user")
     tickets = relationship("Ticket", foreign_keys="Ticket.user_id", back_populates="user")
+    payments = relationship("Payment", back_populates="user")
     notifications = relationship("Notification", back_populates="user")
-    verifications = relationship("Verification", back_populates="user")
-    created_promotions = relationship("Promotion", back_populates="created_by")
     marketplace_listings = relationship("MarketplaceListing", foreign_keys="MarketplaceListing.seller_id", back_populates="seller")
+    transactions = relationship("Transaction", back_populates="user")
+    disputes_reported = relationship("Dispute", foreign_keys="Dispute.reported_by", back_populates="reporter")
+    disputes_assigned = relationship("Dispute", foreign_keys="Dispute.assigned_admin", back_populates="admin")
+    support_tickets = relationship("SupportTicket", foreign_keys="SupportTicket.user_id", back_populates="user")
+    support_tickets_assigned = relationship("SupportTicket", foreign_keys="SupportTicket.assigned_to", back_populates="admin")
+    reports = relationship("Report", back_populates="user")
+    audit_logs = relationship("AuditLog", back_populates="user")
+    ticket_transfers_from = relationship("TicketTransfer", foreign_keys="TicketTransfer.from_user_id", back_populates="from_user")
+    ticket_transfers_to = relationship("TicketTransfer", foreign_keys="TicketTransfer.to_user_id", back_populates="to_user")
     
     def __repr__(self):
-        return f"<User(email='{self.email}', role='{self.role}')>"
+        return f"<User(email='{self.email}')>"
     
     @property
     def full_name(self):
-        return f"{self.first_name} {self.last_name}"
+        return f"{self.firstName} {self.lastName}"
+    
+    def register(self):
+        """Register new user"""
+        self.createdAt = func.now()
+        self.isActive = True
+    
+    def login(self):
+        """Update last login timestamp"""
+        from datetime import datetime
+        self.lastLogin = datetime.utcnow()
+    
+    def update_profile(self, **kwargs):
+        """Update user profile"""
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+    
+    def upload_photo(self, photo_url: str):
+        """Upload profile photo"""
+        self.profilePhoto = photo_url
     
     def to_dict(self):
         return {
             "id": str(self.id),
-            "firstName": self.first_name,
-            "lastName": self.last_name,
             "email": self.email,
-            "role": self.role.value,
-            "isActive": self.is_active,
-            "isVerified": self.is_verified,
-            "avatar": self.avatar,
-            "createdAt": self.created_at.isoformat() if self.created_at else None,
-            "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
-            "lastLogin": self.last_login.isoformat() if self.last_login else None
+            "firstName": self.firstName,
+            "lastName": self.lastName,
+            "phoneNumber": self.phoneNumber,
+            "documentId": self.documentId,
+            "profilePhoto": self.profilePhoto,
+            "isActive": self.isActive,
+            "createdAt": self.createdAt.isoformat() if self.createdAt else None,
+            "lastLogin": self.lastLogin.isoformat() if self.lastLogin else None,
+            "fullName": self.full_name
         }
