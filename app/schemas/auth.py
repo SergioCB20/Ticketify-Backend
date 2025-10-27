@@ -1,21 +1,53 @@
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional
 from datetime import datetime
-from app.models.user import UserRole
+from enum import Enum
 
-# Base schemas
-class UserBase(BaseModel):
-    email: EmailStr
-    first_name: str = Field(..., min_length=2, max_length=50)
-    last_name: str = Field(..., min_length=2, max_length=50)
-    role: UserRole = UserRole.CUSTOMER
+# Enums
+class UserRoleEnum(str, Enum):
+    ATTENDEE = "ATTENDEE"
+    ORGANIZER = "ORGANIZER"
+
+class GenderEnum(str, Enum):
+    MALE = "masculino"
+    FEMALE = "femenino"
+    OTHER = "otro"
+    PREFER_NOT_TO_SAY = "prefiero-no-decir"
+
+class DocumentTypeEnum(str, Enum):
+    DNI = "DNI"
+    CE = "CE"
+    PASSPORT = "Pasaporte"
 
 # Request schemas
 class UserRegister(BaseModel):
+    # Información básica
     email: EmailStr
     password: str = Field(..., min_length=8)
-    first_name: str = Field(..., min_length=2, max_length=50)
-    last_name: str = Field(..., min_length=2, max_length=50)
+    firstName: str = Field(..., min_length=2, max_length=100, alias="firstName")
+    lastName: str = Field(..., min_length=2, max_length=100, alias="lastName")
+    
+    # Tipo de usuario (NUEVO)
+    userType: UserRoleEnum = Field(..., alias="userType")
+    
+    # Información adicional
+    phoneNumber: Optional[str] = Field(None, max_length=20, alias="phoneNumber")
+    documentType: DocumentTypeEnum = Field(..., alias="documentType")
+    documentId: str = Field(..., min_length=8, max_length=50, alias="documentId")
+    
+    # Ubicación
+    country: str = Field(..., max_length=100)
+    city: str = Field(..., max_length=100)
+    
+    # Género
+    gender: GenderEnum
+    
+    # Términos y condiciones
+    acceptTerms: bool = Field(..., alias="acceptTerms")
+    acceptMarketing: Optional[bool] = Field(False, alias="acceptMarketing")
+    
+    class Config:
+        populate_by_name = True
     
     @validator('password')
     def validate_password(cls, v):
@@ -31,21 +63,47 @@ class UserRegister(BaseModel):
             raise ValueError('La contraseña debe contener al menos una mayúscula, una minúscula y un número')
         
         return v
+    
+    @validator('acceptTerms')
+    def validate_terms(cls, v):
+        """Validate that terms are accepted"""
+        if not v:
+            raise ValueError('Debes aceptar los términos y condiciones')
+        return v
+    
+    @validator('documentId')
+    def validate_document_id(cls, v, values):
+        """Validate document ID based on type"""
+        doc_type = values.get('documentType')
+        
+        if doc_type == DocumentTypeEnum.DNI:
+            if not v.isdigit() or len(v) != 8:
+                raise ValueError('El DNI debe tener exactamente 8 dígitos')
+        
+        return v
 
 class UserLogin(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=1)
 
 class UserUpdate(BaseModel):
-    first_name: Optional[str] = Field(None, min_length=2, max_length=50)
-    last_name: Optional[str] = Field(None, min_length=2, max_length=50)
-    avatar: Optional[str] = None
+    firstName: Optional[str] = Field(None, min_length=2, max_length=100)
+    lastName: Optional[str] = Field(None, min_length=2, max_length=100)
+    phoneNumber: Optional[str] = Field(None, max_length=20)
+    profilePhoto: Optional[str] = None
+    city: Optional[str] = Field(None, max_length=100)
+    
+    class Config:
+        populate_by_name = True
 
 class ChangePassword(BaseModel):
-    current_password: str = Field(..., min_length=1)
-    new_password: str = Field(..., min_length=8)
+    currentPassword: str = Field(..., min_length=1, alias="currentPassword")
+    newPassword: str = Field(..., min_length=8, alias="newPassword")
     
-    @validator('new_password')
+    class Config:
+        populate_by_name = True
+    
+    @validator('newPassword')
     def validate_new_password(cls, v):
         """Validate password complexity"""
         if len(v) < 8:
@@ -62,9 +120,12 @@ class ChangePassword(BaseModel):
 
 class PasswordReset(BaseModel):
     token: str
-    new_password: str = Field(..., min_length=8)
+    newPassword: str = Field(..., min_length=8, alias="newPassword")
     
-    @validator('new_password')
+    class Config:
+        populate_by_name = True
+    
+    @validator('newPassword')
     def validate_password(cls, v):
         """Validate password complexity"""
         if len(v) < 8:
@@ -86,30 +147,36 @@ class ForgotPassword(BaseModel):
 class UserResponse(BaseModel):
     id: str
     email: str
-    first_name: str
-    last_name: str
-    role: UserRole
-    is_active: bool
-    is_verified: bool
-    avatar: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
-    last_login: Optional[datetime] = None
+    firstName: str
+    lastName: str
+    phoneNumber: Optional[str] = None
+    documentId: Optional[str] = None
+    profilePhoto: Optional[str] = None
+    isActive: bool
+    createdAt: datetime
+    lastLogin: Optional[datetime] = None
     
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-    expires_in: int
+    accessToken: str = Field(..., alias="accessToken")
+    refreshToken: str = Field(..., alias="refreshToken")
+    tokenType: str = Field(default="bearer", alias="tokenType")
+    expiresIn: int = Field(..., alias="expiresIn")
     user: UserResponse
+    
+    class Config:
+        populate_by_name = True
 
 class AuthResponse(BaseModel):
     user: UserResponse
-    access_token: str
-    refresh_token: str
+    accessToken: str = Field(..., alias="accessToken")
+    refreshToken: str = Field(..., alias="refreshToken")
+    
+    class Config:
+        populate_by_name = True
 
 class MessageResponse(BaseModel):
     message: str
@@ -118,7 +185,13 @@ class MessageResponse(BaseModel):
 # Token schemas
 class TokenData(BaseModel):
     email: Optional[str] = None
-    user_id: Optional[str] = None
+    userId: Optional[str] = Field(None, alias="userId")
+    
+    class Config:
+        populate_by_name = True
 
 class RefreshToken(BaseModel):
-    refresh_token: str
+    refreshToken: str = Field(..., alias="refreshToken")
+    
+    class Config:
+        populate_by_name = True

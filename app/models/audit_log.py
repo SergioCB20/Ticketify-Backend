@@ -16,7 +16,7 @@ class AuditLog(Base):
     resource = Column(String(100), nullable=False)  # USER, EVENT, TICKET, etc.
     ipAddress = Column(String(45), nullable=True)  # IPv6 compatible
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
-    metadata = Column(Text, nullable=True)  # JSON with additional context
+    metaData = Column(Text, nullable=True)  # JSON with additional context - CAMBIADO de 'metadata' a 'metaData'
     
     # Foreign key
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
@@ -28,7 +28,7 @@ class AuditLog(Base):
         return f"<AuditLog(action='{self.action}', resource='{self.resource}')>"
     
     @staticmethod
-    def log_action(user_id: uuid.UUID, action: str, resource: str, ip_address: str = None, metadata: dict = None):
+    def log_action(user_id: uuid.UUID, action: str, resource: str, ip_address: str = None, meta_data: dict = None):
         """Log an action"""
         import json
         log = AuditLog(
@@ -36,7 +36,7 @@ class AuditLog(Base):
             action=action,
             resource=resource,
             ipAddress=ip_address,
-            metadata=json.dumps(metadata) if metadata else None
+            metaData=json.dumps(meta_data) if meta_data else None
         )
         return log
     
@@ -54,6 +54,6 @@ class AuditLog(Base):
             "resource": self.resource,
             "ipAddress": self.ipAddress,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-            "metadata": json.loads(self.metadata) if self.metadata else None,
+            "metaData": json.loads(self.metaData) if self.metaData else None,
             "userId": str(self.user_id) if self.user_id else None
         }

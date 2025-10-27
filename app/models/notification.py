@@ -52,7 +52,7 @@ class Notification(Base):
     action_url = Column(String(500), nullable=True)  # URL for action button
     action_text = Column(String(100), nullable=True)  # Text for action button
     image_url = Column(String(500), nullable=True)
-    meta_data = Column(Text, nullable=True)  # JSON string for additional data
+    metaData = Column(Text, nullable=True)  # JSON string for additional data - CAMBIADO de meta_data a metaData
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -116,7 +116,7 @@ class Notification(Base):
             "actionUrl": self.action_url,
             "actionText": self.action_text,
             "imageUrl": self.image_url,
-            "meta_data": self.meta_data,
+            "metaData": self.metaData,
             "expiresAt": self.expires_at.isoformat() if self.expires_at else None,
             "userId": str(self.user_id),
             "eventId": str(self.event_id) if self.event_id else None,

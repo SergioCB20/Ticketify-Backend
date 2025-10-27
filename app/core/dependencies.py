@@ -28,39 +28,34 @@ def get_current_active_user(
     current_user: User = Depends(get_current_user)
 ) -> User:
     """Get current active user"""
-    if not current_user.is_active:
+    if not current_user.isActive:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
-        )
-    return current_user
-
-def get_current_verified_user(
-    current_user: User = Depends(get_current_active_user)
-) -> User:
-    """Get current verified user"""
-    if not current_user.is_verified:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email not verified"
+            detail="Usuario inactivo"
         )
     return current_user
 
 def require_role(allowed_roles: list[UserRole]):
     """Decorator to require specific user roles"""
     def role_checker(current_user: User = Depends(get_current_active_user)) -> User:
-        if current_user.role not in allowed_roles:
+        # Check if user has any of the required roles through the Role relationship
+        user_role_names = [role.name for role in current_user.roles]
+        
+        # Convert UserRole enums to strings for comparison
+        allowed_role_names = [role.value for role in allowed_roles]
+        
+        if not any(role_name in allowed_role_names for role_name in user_role_names):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not enough permissions"
+                detail="No tienes permisos suficientes"
             )
         return current_user
     return role_checker
 
-# Common role dependencies
-get_admin_user = require_role([UserRole.ADMIN])
-get_organizer_user = require_role([UserRole.ADMIN, UserRole.ORGANIZER])
-get_customer_user = require_role([UserRole.CUSTOMER])
+# Common role dependencies usando los nuevos roles
+get_organizer_user = require_role([UserRole.ORGANIZER])
+get_attendee_user = require_role([UserRole.ATTENDEE])
+get_organizer_or_attendee = require_role([UserRole.ORGANIZER, UserRole.ATTENDEE])
 
 def get_optional_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)),
@@ -74,6 +69,6 @@ def get_optional_current_user(
         token = credentials.credentials
         auth_service = AuthService(db)
         user = auth_service.get_current_user(token)
-        return user if user.is_active else None
+        return user if user.isActive else None
     except Exception:
         return None
