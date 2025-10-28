@@ -31,7 +31,15 @@ class AuthService:
         if existing_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already registered"
+                detail="El correo electrónico ya está registrado"
+            )
+        
+        # Check if document ID already exists
+        existing_doc = self.user_repo.get_by_document_id(user_data.documentId)
+        if existing_doc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El número de documento ya está registrado"
             )
         
         # Create new user
@@ -50,42 +58,47 @@ class AuthService:
             user_response = UserResponse(
                 id=str(user.id),
                 email=user.email,
-                first_name=user.first_name,
-                last_name=user.last_name,
-                role=user.role,
-                is_active=user.is_active,
-                is_verified=user.is_verified,
-                avatar=user.avatar,
-                created_at=user.created_at,
-                updated_at=user.updated_at,
-                last_login=user.last_login
+                firstName=user.firstName,
+                lastName=user.lastName,
+                phoneNumber=user.phoneNumber,
+                documentId=user.documentId,
+                profilePhoto=user.profilePhoto,
+                isActive=user.isActive,
+                createdAt=user.createdAt,
+                lastLogin=user.lastLogin
             )
             
             return AuthResponse(
                 user=user_response,
-                access_token=access_token,
-                refresh_token=refresh_token
+                accessToken=access_token,
+                refreshToken=refresh_token
             )
             
+        except ValueError as ve:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(ve)
+            )
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error creating user: {str(e)}"
+                detail=f"Error al crear usuario: {str(e)}"
             )
     
     def login_user(self, credentials: UserLogin) -> AuthResponse:
         """Authenticate user and return tokens"""
         # Get user by email
+        print("Attempting login for:", credentials.email)
         user = self.user_repo.get_by_email(credentials.email)
         if not user:
             raise INVALID_CREDENTIALS_EXCEPTION
         
         # Verify password
-        if not verify_password(credentials.password, user.hashed_password):
+        if not verify_password(credentials.password, user.password):
             raise INVALID_CREDENTIALS_EXCEPTION
         
         # Check if user is active
-        if not user.is_active:
+        if not user.isActive:
             raise INACTIVE_USER_EXCEPTION
         
         # Update last login
@@ -103,21 +116,20 @@ class AuthService:
         user_response = UserResponse(
             id=str(user.id),
             email=user.email,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            role=user.role,
-            is_active=user.is_active,
-            is_verified=user.is_verified,
-            avatar=user.avatar,
-            created_at=user.created_at,
-            updated_at=user.updated_at,
-            last_login=datetime.utcnow()  # Current login
+            firstName=user.firstName,
+            lastName=user.lastName,
+            phoneNumber=user.phoneNumber,
+            documentId=user.documentId,
+            profilePhoto=user.profilePhoto,
+            isActive=user.isActive,
+            createdAt=user.createdAt,
+            lastLogin=datetime.utcnow()  # Current login
         )
         
         return AuthResponse(
             user=user_response,
-            access_token=access_token,
-            refresh_token=refresh_token
+            accessToken=access_token,
+            refreshToken=refresh_token
         )
     
     def refresh_token(self, refresh_token: str) -> Tuple[str, str]:
@@ -132,15 +144,15 @@ class AuthService:
         if not user_id or not email:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid refresh token"
+                detail="Token de actualización inválido"
             )
         
         # Check if user still exists and is active
         user = self.user_repo.get_by_id(uuid.UUID(user_id))
-        if not user or not user.is_active:
+        if not user or not user.isActive:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found or inactive"
+                detail="Usuario no encontrado o inactivo"
             )
         
         # Generate new tokens
@@ -164,7 +176,7 @@ class AuthService:
         if not user_id:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
+                detail="Token inválido"
             )
         
         # Get user
@@ -172,10 +184,10 @@ class AuthService:
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found"
+                detail="Usuario no encontrado"
             )
         
-        if not user.is_active:
+        if not user.isActive:
             raise INACTIVE_USER_EXCEPTION
         
         return user
@@ -213,18 +225,14 @@ class AuthService:
             return False
         
         # Verify current password
-        if not verify_password(current_password, user.hashed_password):
+        if not verify_password(current_password, user.password):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Current password is incorrect"
+                detail="La contraseña actual es incorrecta"
             )
         
         # Update password
         return self.user_repo.update_password(user_id, new_password)
-    
-    def verify_email(self, token: str) -> bool:
-        """Verify user email"""
-        return self.user_repo.verify_email(token)
     
     def get_user_profile(self, user_id: uuid.UUID) -> Optional[UserResponse]:
         """Get user profile"""
@@ -235,13 +243,12 @@ class AuthService:
         return UserResponse(
             id=str(user.id),
             email=user.email,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            role=user.role,
-            is_active=user.is_active,
-            is_verified=user.is_verified,
-            avatar=user.avatar,
-            created_at=user.created_at,
-            updated_at=user.updated_at,
-            last_login=user.last_login
+            firstName=user.firstName,
+            lastName=user.lastName,
+            phoneNumber=user.phoneNumber,
+            documentId=user.documentId,
+            profilePhoto=user.profilePhoto,
+            isActive=user.isActive,
+            createdAt=user.createdAt,
+            lastLogin=user.lastLogin
         )

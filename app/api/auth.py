@@ -13,12 +13,27 @@ from app.models.user import User
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-@router.post("/register", response_model=AuthResponse)
+@router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(
     user_data: UserRegister,
     db: Session = Depends(get_db)
 ):
-    """Register a new user"""
+    """
+    Register a new user
+    
+    - **email**: Valid email address
+    - **password**: Minimum 8 characters with uppercase, lowercase, and number
+    - **firstName**: User's first name
+    - **lastName**: User's last name
+    - **phoneNumber**: Contact phone number
+    - **documentType**: DNI, CE, or Pasaporte
+    - **documentId**: Document ID number
+    - **country**: Country of residence
+    - **city**: City of residence
+    - **gender**: Gender selection
+    - **acceptTerms**: Must be true to register
+    - **acceptMarketing**: Optional marketing consent
+    """
     auth_service = AuthService(db)
     return auth_service.register_user(user_data)
 
@@ -27,8 +42,13 @@ async def login_user(
     credentials: UserLogin,
     db: Session = Depends(get_db)
 ):
-    """Login user with email and password"""
+    """
+    Login user with email and password
+    
+    Returns access token and refresh token for authentication
+    """
     auth_service = AuthService(db)
+    print("Login attempt for:", credentials.email)
     return auth_service.login_user(credentials)
 
 @router.post("/refresh", response_model=dict)
@@ -36,25 +56,31 @@ async def refresh_access_token(
     refresh_data: RefreshToken,
     db: Session = Depends(get_db)
 ):
-    """Refresh access token using refresh token"""
+    """
+    Refresh access token using refresh token
+    
+    Returns new access token and refresh token
+    """
     auth_service = AuthService(db)
-    access_token, refresh_token = auth_service.refresh_token(refresh_data.refresh_token)
+    access_token, refresh_token = auth_service.refresh_token(refresh_data.refreshToken)
     
     return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer"
+        "accessToken": access_token,
+        "refreshToken": refresh_token,
+        "tokenType": "bearer"
     }
 
 @router.post("/logout", response_model=MessageResponse)
 async def logout_user(
     current_user: User = Depends(get_current_user)
 ):
-    """Logout current user (client-side token invalidation)"""
-    # In JWT stateless approach, logout is mainly client-side
-    # Server could maintain a blacklist of tokens if needed
+    """
+    Logout current user (client-side token invalidation)
+    
+    In JWT stateless approach, logout is mainly client-side
+    """
     return MessageResponse(
-        message="Logged out successfully",
+        message="Sesión cerrada exitosamente",
         success=True
     )
 
@@ -62,19 +88,22 @@ async def logout_user(
 async def get_user_profile(
     current_user: User = Depends(get_current_active_user)
 ):
-    """Get current user profile"""
+    """
+    Get current user profile
+    
+    Returns authenticated user information
+    """
     return UserResponse(
         id=str(current_user.id),
         email=current_user.email,
-        first_name=current_user.first_name,
-        last_name=current_user.last_name,
-        role=current_user.role,
-        is_active=current_user.is_active,
-        is_verified=current_user.is_verified,
-        avatar=current_user.avatar,
-        created_at=current_user.created_at,
-        updated_at=current_user.updated_at,
-        last_login=current_user.last_login
+        firstName=current_user.firstName,
+        lastName=current_user.lastName,
+        phoneNumber=current_user.phoneNumber,
+        documentId=current_user.documentId,
+        profilePhoto=current_user.profilePhoto,
+        isActive=current_user.isActive,
+        createdAt=current_user.createdAt,
+        lastLogin=current_user.lastLogin
     )
 
 @router.put("/profile", response_model=UserResponse)
@@ -83,7 +112,11 @@ async def update_user_profile(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Update current user profile"""
+    """
+    Update current user profile
+    
+    Only provided fields will be updated
+    """
     from app.repositories.user_repository import UserRepository
     
     user_repo = UserRepository(db)
@@ -92,21 +125,20 @@ async def update_user_profile(
     if not updated_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to update profile"
+            detail="Error al actualizar el perfil"
         )
     
     return UserResponse(
         id=str(updated_user.id),
         email=updated_user.email,
-        first_name=updated_user.first_name,
-        last_name=updated_user.last_name,
-        role=updated_user.role,
-        is_active=updated_user.is_active,
-        is_verified=updated_user.is_verified,
-        avatar=updated_user.avatar,
-        created_at=updated_user.created_at,
-        updated_at=updated_user.updated_at,
-        last_login=updated_user.last_login
+        firstName=updated_user.firstName,
+        lastName=updated_user.lastName,
+        phoneNumber=updated_user.phoneNumber,
+        documentId=updated_user.documentId,
+        profilePhoto=updated_user.profilePhoto,
+        isActive=updated_user.isActive,
+        createdAt=updated_user.createdAt,
+        lastLogin=updated_user.lastLogin
     )
 
 @router.post("/change-password", response_model=MessageResponse)
@@ -115,22 +147,26 @@ async def change_password(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Change user password"""
+    """
+    Change user password
+    
+    Requires current password for verification
+    """
     auth_service = AuthService(db)
     success = auth_service.change_password(
         current_user.id, 
-        password_data.current_password, 
-        password_data.new_password
+        password_data.currentPassword, 
+        password_data.newPassword
     )
     
     if not success:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to change password"
+            detail="Error al cambiar la contraseña"
         )
     
     return MessageResponse(
-        message="Password changed successfully",
+        message="Contraseña cambiada exitosamente",
         success=True
     )
 
@@ -139,13 +175,17 @@ async def request_password_reset(
     reset_data: ForgotPassword,
     db: Session = Depends(get_db)
 ):
-    """Request password reset"""
+    """
+    Request password reset
+    
+    Sends password reset instructions to email if it exists
+    """
     auth_service = AuthService(db)
     auth_service.request_password_reset(reset_data.email)
     
     # Always return success for security reasons
     return MessageResponse(
-        message="If the email exists, you will receive password reset instructions",
+        message="Si el correo existe, recibirás instrucciones para restablecer tu contraseña",
         success=True
     )
 
@@ -154,38 +194,22 @@ async def reset_password(
     reset_data: PasswordReset,
     db: Session = Depends(get_db)
 ):
-    """Reset password using reset token"""
+    """
+    Reset password using reset token
+    
+    Token must be valid and not expired
+    """
     auth_service = AuthService(db)
-    success = auth_service.reset_password(reset_data.token, reset_data.new_password)
+    success = auth_service.reset_password(reset_data.token, reset_data.newPassword)
     
     if not success:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired reset token"
+            detail="Token inválido o expirado"
         )
     
     return MessageResponse(
-        message="Password reset successfully",
-        success=True
-    )
-
-@router.post("/verify-email", response_model=MessageResponse)
-async def verify_email(
-    token: str,
-    db: Session = Depends(get_db)
-):
-    """Verify user email using verification token"""
-    auth_service = AuthService(db)
-    success = auth_service.verify_email(token)
-    
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired verification token"
-        )
-    
-    return MessageResponse(
-        message="Email verified successfully",
+        message="Contraseña restablecida exitosamente",
         success=True
     )
 
@@ -194,7 +218,11 @@ async def delete_user_account(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Delete current user account"""
+    """
+    Delete current user account
+    
+    Permanently deletes the user account and all associated data
+    """
     from app.repositories.user_repository import UserRepository
     
     user_repo = UserRepository(db)
@@ -203,10 +231,10 @@ async def delete_user_account(
     if not success:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to delete account"
+            detail="Error al eliminar la cuenta"
         )
     
     return MessageResponse(
-        message="Account deleted successfully",
+        message="Cuenta eliminada exitosamente",
         success=True
     )
