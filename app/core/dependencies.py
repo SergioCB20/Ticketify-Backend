@@ -18,10 +18,17 @@ def get_current_user(
     """Get current authenticated user"""
     try:
         token = credentials.credentials
+        print(f"[DEBUG] Token received: {token[:20]}...")  # Log para debug
         auth_service = AuthService(db)
         user = auth_service.get_current_user(token)
+        print(f"[DEBUG] User authenticated: {user.email}")  # Log para debug
         return user
-    except Exception:
+    except HTTPException as he:
+        # Re-raise HTTP exceptions from auth_service
+        print(f"[DEBUG] HTTP Exception: {he.detail}")
+        raise he
+    except Exception as e:
+        print(f"[DEBUG] Generic Exception: {str(e)}")  # Log para debug
         raise CREDENTIALS_EXCEPTION
 
 def get_current_active_user(
@@ -72,3 +79,71 @@ def get_optional_current_user(
         return user if user.isActive else None
     except Exception:
         return None
+
+# ============= DEPENDENCIAS PARA ADMINISTRADORES =============
+
+def require_super_admin(
+    current_user: User = Depends(get_current_active_user)
+) -> User:
+    """Requiere que el usuario sea SUPER_ADMIN"""
+    user_role_names = [role.name for role in current_user.roles]
+    
+    if 'SUPER_ADMIN' not in user_role_names:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Se requieren privilegios de Super Administrador"
+        )
+    return current_user
+
+def require_any_admin(
+    current_user: User = Depends(get_current_active_user)
+) -> User:
+    """Requiere que el usuario tenga cualquier rol de administrador"""
+    user_role_names = [role.name for role in current_user.roles]
+    admin_roles = ['SUPER_ADMIN', 'SUPPORT_ADMIN', 'SECURITY_ADMIN', 'CONTENT_ADMIN']
+    
+    if not any(role in admin_roles for role in user_role_names):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Se requieren privilegios de Administrador"
+        )
+    return current_user
+
+def require_support_admin(
+    current_user: User = Depends(get_current_active_user)
+) -> User:
+    """Requiere que el usuario sea SUPER_ADMIN o SUPPORT_ADMIN"""
+    user_role_names = [role.name for role in current_user.roles]
+    
+    if 'SUPER_ADMIN' not in user_role_names and 'SUPPORT_ADMIN' not in user_role_names:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Se requieren privilegios de Soporte"
+        )
+    return current_user
+
+def require_security_admin(
+    current_user: User = Depends(get_current_active_user)
+) -> User:
+    """Requiere que el usuario sea SUPER_ADMIN o SECURITY_ADMIN"""
+    user_role_names = [role.name for role in current_user.roles]
+    
+    if 'SUPER_ADMIN' not in user_role_names and 'SECURITY_ADMIN' not in user_role_names:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Se requieren privilegios de Seguridad"
+        )
+    return current_user
+
+def require_content_admin(
+    current_user: User = Depends(get_current_active_user)
+) -> User:
+    """Requiere que el usuario sea SUPER_ADMIN o CONTENT_ADMIN"""
+    user_role_names = [role.name for role in current_user.roles]
+    
+    if 'SUPER_ADMIN' not in user_role_names and 'CONTENT_ADMIN' not in user_role_names:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Se requieren privilegios de Contenido"
+        )
+    return current_user

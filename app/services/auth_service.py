@@ -24,6 +24,10 @@ class AuthService:
         self.db = db
         self.user_repo = UserRepository(db)
     
+    def _get_user_roles(self, user: User) -> list[str]:
+        """Get list of role names for a user"""
+        return [role.name for role in user.roles] if user.roles else []
+    
     def register_user(self, user_data: UserRegister) -> AuthResponse:
         """Register a new user"""
         # Check if user already exists
@@ -54,7 +58,7 @@ class AuthService:
                 data={"sub": user.email, "user_id": str(user.id)}
             )
             
-            # Convert user to response format
+            # Convert user to response format with roles
             user_response = UserResponse(
                 id=str(user.id),
                 email=user.email,
@@ -64,6 +68,7 @@ class AuthService:
                 documentId=user.documentId,
                 profilePhoto=user.profilePhoto,
                 isActive=user.isActive,
+                roles=self._get_user_roles(user),  # ✅ AGREGADO
                 createdAt=user.createdAt,
                 lastLogin=user.lastLogin
             )
@@ -87,8 +92,9 @@ class AuthService:
     
     def login_user(self, credentials: UserLogin) -> AuthResponse:
         """Authenticate user and return tokens"""
+        print(f"Attempting login for: {credentials.email}")  # Debug log
+        
         # Get user by email
-        print("Attempting login for:", credentials.email)
         user = self.user_repo.get_by_email(credentials.email)
         if not user:
             raise INVALID_CREDENTIALS_EXCEPTION
@@ -112,7 +118,7 @@ class AuthService:
             data={"sub": user.email, "user_id": str(user.id)}
         )
         
-        # Convert user to response format
+        # Convert user to response format with roles
         user_response = UserResponse(
             id=str(user.id),
             email=user.email,
@@ -122,9 +128,12 @@ class AuthService:
             documentId=user.documentId,
             profilePhoto=user.profilePhoto,
             isActive=user.isActive,
+            roles=self._get_user_roles(user),  # ✅ AGREGADO
             createdAt=user.createdAt,
             lastLogin=datetime.utcnow()  # Current login
         )
+        
+        print(f"Login successful for: {user.email}, roles: {user_response.roles}")  # Debug log
         
         return AuthResponse(
             user=user_response,
@@ -249,6 +258,7 @@ class AuthService:
             documentId=user.documentId,
             profilePhoto=user.profilePhoto,
             isActive=user.isActive,
+            roles=self._get_user_roles(user),  # ✅ AGREGADO
             createdAt=user.createdAt,
             lastLogin=user.lastLogin
         )
