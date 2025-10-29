@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_active_user, get_current_user
+from app.core.dependencies import get_current_active_user, get_current_user, get_optional_current_user
 from app.services.auth_service import AuthService
 from app.schemas.auth import (
     UserRegister, UserLogin, AuthResponse, UserResponse, 
@@ -48,7 +48,6 @@ async def login_user(
     Returns access token and refresh token for authentication
     """
     auth_service = AuthService(db)
-    print("Login attempt for:", credentials.email)
     return auth_service.login_user(credentials)
 
 @router.post("/refresh", response_model=dict)
@@ -71,13 +70,13 @@ async def refresh_access_token(
     }
 
 @router.post("/logout", response_model=MessageResponse)
-async def logout_user(
-    current_user: User = Depends(get_current_user)
-):
+async def logout_user():
     """
     Logout current user (client-side token invalidation)
     
-    In JWT stateless approach, logout is mainly client-side
+    In JWT stateless approach, logout is mainly client-side.
+    This endpoint always returns success, even with expired tokens,
+    as the client will clear the tokens locally.
     """
     return MessageResponse(
         message="Sesión cerrada exitosamente",
@@ -93,6 +92,9 @@ async def get_user_profile(
     
     Returns authenticated user information
     """
+    # Get user roles
+    roles = [role.name for role in current_user.roles] if current_user.roles else []
+    
     return UserResponse(
         id=str(current_user.id),
         email=current_user.email,
@@ -102,6 +104,7 @@ async def get_user_profile(
         documentId=current_user.documentId,
         profilePhoto=current_user.profilePhoto,
         isActive=current_user.isActive,
+        roles=roles,
         createdAt=current_user.createdAt,
         lastLogin=current_user.lastLogin
     )

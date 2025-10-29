@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, validator
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from enum import Enum
 
@@ -153,6 +153,7 @@ class UserResponse(BaseModel):
     documentId: Optional[str] = None
     profilePhoto: Optional[str] = None
     isActive: bool
+    roles: List[str] = []  # ✅ AGREGADO: Lista de roles del usuario
     createdAt: datetime
     lastLogin: Optional[datetime] = None
     
