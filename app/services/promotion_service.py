@@ -4,11 +4,10 @@ from datetime import datetime
 from typing import List, Optional
 
 from app.schemas.promotion_schema import PromotionCreate, PromotionUpdate, PromotionResponse
-from app.models.promotion import PromotionStatus
+from app.models.promotion import PromotionStatus, Promotion
 from app.models.event import Event
 from app.repositories import promotion_repository
 from fastapi import HTTPException, status
-
 
 # -----------------------------------------------------------
 # 📌 Crear una promoción asociada a un evento
@@ -47,6 +46,8 @@ def get_promotions_by_event_service(db: Session, event_id: UUID, organizer_id: U
     promotions = promotion_repository.get_promotions_by_event(db, event_id)
     return [PromotionResponse.from_orm(p) for p in promotions]
 
+def get_all_promotions_service(db: Session, organizer_id: str):
+    return db.query(Promotion).filter_by(organizer_id=organizer_id).all()
 
 # -----------------------------------------------------------
 # 📌 Actualizar promoción

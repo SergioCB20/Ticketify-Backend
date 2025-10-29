@@ -45,6 +45,19 @@ def get_promotions_by_event(
     organizer_id = current_user["id"]
     return promotion_service.get_promotions_by_event_service(db, event_id, organizer_id)
 
+# -----------------------------------------------------------
+# 📌 Obtener todas las promociones (sin filtrar por evento)
+# -----------------------------------------------------------
+@router.get("/", response_model=List[PromotionResponse])
+def get_all_promotions(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Listar todas las promociones disponibles (según permisos).
+    """
+    organizer_id = current_user["id"]
+    return promotion_service.get_all_promotions_service(db, organizer_id)
 
 # -----------------------------------------------------------
 # 📌 Actualizar promoción
