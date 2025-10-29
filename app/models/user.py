@@ -46,12 +46,16 @@ class User(Base):
     # Timestamps
     createdAt = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     lastLogin = Column(DateTime(timezone=True), nullable=True)
-    
+
+
+
     # Relationships
+    created_promotions = relationship("Promotion",back_populates="organizer",cascade="all, delete-orphan")
     roles = relationship("Role", secondary=user_roles, back_populates="users")
     organized_events = relationship("Event", back_populates="organizer", foreign_keys="Event.organizer_id")
     tickets = relationship("Ticket", foreign_keys="Ticket.user_id", back_populates="user")
     payments = relationship("Payment", back_populates="user")
+    purchases = relationship("Purchase", back_populates="user", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="user")
     marketplace_listings = relationship("MarketplaceListing", foreign_keys="MarketplaceListing.seller_id", back_populates="seller")
     transactions = relationship("Transaction", back_populates="user")
@@ -105,3 +109,9 @@ class User(Base):
             "lastLogin": self.lastLogin.isoformat() if self.lastLogin else None,
             "fullName": self.full_name
         }
+
+
+from app.models.promotion import Promotion  # type: ignore
+from app.models.purchase import Purchase  # type: ignore
+    
+    

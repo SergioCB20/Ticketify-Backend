@@ -3,11 +3,15 @@ from typing import Union, Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import HTTPException, status
+from fastapi import Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer
 import secrets
 import string
 
 from app.core.config import settings
 
+# Ruta del endpoint de login
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -109,6 +113,21 @@ def validate_password_strength(password: str) -> dict:
         "issues": issues
     }
 
+def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
+    """
+    Extrae el usuario actual desde el JWT en la cabecera Authorization.
+    Devuelve un diccionario con los datos del token decodificado.
+    """
+    payload = verify_token(token, token_type="access")
+
+    user_id = payload.get("id") or payload.get("sub")
+    role = payload.get("role")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Token inválido: falta el ID del usuario")
+
+    return {"id": user_id, "role": role}
+
 # Security constants
 CREDENTIALS_EXCEPTION = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -125,3 +144,4 @@ INVALID_CREDENTIALS_EXCEPTION = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
     detail="Incorrect email or password"
 )
+

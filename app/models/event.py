@@ -49,6 +49,7 @@ class Event(Base):
     # Relationships
     organizer = relationship("User", back_populates="organized_events")
     category = relationship("EventCategory", back_populates="events")
+    purchases = relationship("Purchase", back_populates="event", cascade="all, delete-orphan")
     ticket_types = relationship("TicketType", back_populates="event", cascade="all, delete-orphan")
     tickets = relationship("Ticket", back_populates="event")
     marketplace_listings = relationship("MarketplaceListing", back_populates="event")
@@ -110,3 +111,9 @@ class Event(Base):
             "createdAt": self.createdAt.isoformat() if self.createdAt else None,
             "updatedAt": self.updatedAt.isoformat() if self.updatedAt else None
         }
+    promotions = relationship(
+        "Promotion",
+        secondary="event_promotions",
+        back_populates="events"
+    )
+    

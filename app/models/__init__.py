@@ -36,6 +36,12 @@ from app.models.support_ticket import SupportTicket
 # Notification
 from app.models.notification import Notification, NotificationType, NotificationChannel
 
+# Promotions
+from app.models.promotion import Promotion, PromotionType, PromotionStatus
+
+# Purchase
+from app.models.purchase import Purchase, PurchaseStatus
+
 # Analytics and reporting
 from app.models.analytics import Analytics
 from app.models.report import Report
@@ -90,6 +96,15 @@ __all__ = [
     "NotificationType",
     "NotificationChannel",
     
+    # Promotions
+    "Promotion",
+    "PromotionType",
+    "PromotionStatus",
+
+    # Purchase
+    "Purchase",
+    "PurchaseStatus",
+
     # Analytics
     "Analytics",
     "Report",

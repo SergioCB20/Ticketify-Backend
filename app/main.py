@@ -6,6 +6,8 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.api import api_router
 from app.core.database import Base, engine
+from app import models
+
 
 # Crear tablas si no existen
 Base.metadata.create_all(bind=engine)

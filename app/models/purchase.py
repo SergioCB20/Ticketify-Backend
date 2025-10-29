@@ -5,6 +5,7 @@ from sqlalchemy.orm import relationship
 import uuid
 import enum
 from app.core.database import Base
+from app.core.database import Base
 
 class PurchaseStatus(str, enum.Enum):
     PENDING = "PENDING"
