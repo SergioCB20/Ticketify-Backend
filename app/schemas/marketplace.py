@@ -25,8 +25,7 @@ class MarketplaceListingResponse(BaseModel):
     createdAt: datetime = Field(..., alias="created_at")
     expiresAt: Optional[datetime] = Field(None, alias="expires_at")
     soldAt: Optional[datetime] = Field(None, alias="sold_at") # <-- Añadido por si acaso
-    views_count: str 
-    inquiries_count: str 
+    
     
     
     event: EventSimpleResponse
