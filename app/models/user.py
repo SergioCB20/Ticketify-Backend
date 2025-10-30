@@ -17,6 +17,17 @@ class AdminRole(str, enum.Enum):
     SECURITY_ADMIN = "SECURITY_ADMIN"
     CONTENT_ADMIN = "CONTENT_ADMIN"
 
+class DocumentType(str, enum.Enum):
+    DNI = "DNI"
+    CE = "CE"
+    PASSPORT = "Pasaporte"
+
+class Gender(str, enum.Enum):
+    MALE = "masculino"
+    FEMALE = "femenino"
+    OTHER = "otro"
+    PREFER_NOT_TO_SAY = "prefiero-no-decir"
+
 # Tabla intermedia para relación Many-to-Many User-Role
 user_roles = Table(
     'user_roles',
@@ -37,7 +48,17 @@ class User(Base):
     firstName = Column(String(100), nullable=False)  # Renombrado de first_name
     lastName = Column(String(100), nullable=False)  # Renombrado de last_name
     phoneNumber = Column(String(20), nullable=True)  # NUEVO
-    documentId = Column(String(50), nullable=True)  # NUEVO
+    
+    # Document information
+    documentType = Column(Enum(DocumentType), nullable=True)  # DNI, CE, Pasaporte
+    documentId = Column(String(50), nullable=True, unique=True, index=True)  # Número de documento
+    
+    # Location
+    country = Column(String(100), nullable=True)  # País
+    city = Column(String(100), nullable=True)  # Ciudad
+    
+    # Personal
+    gender = Column(Enum(Gender), nullable=True)  # Género
     profilePhoto = Column(String(500), nullable=True)  # Renombrado de avatar
     
     # Status
@@ -98,7 +119,11 @@ class User(Base):
             "firstName": self.firstName,
             "lastName": self.lastName,
             "phoneNumber": self.phoneNumber,
+            "documentType": self.documentType.value if self.documentType else None,
             "documentId": self.documentId,
+            "country": self.country,
+            "city": self.city,
+            "gender": self.gender.value if self.gender else None,
             "profilePhoto": self.profilePhoto,
             "isActive": self.isActive,
             "createdAt": self.createdAt.isoformat() if self.createdAt else None,
