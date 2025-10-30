@@ -1,55 +1,31 @@
+# app/schemas/marketplace.py
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 from uuid import UUID
-from .event import EventSimpleResponse  # Necesitarás crear este schema simple
-from .user import UserSimpleResponse    # Necesitarás crear este schema simple
-
-# --- SCHEMAS SIMPLIFICADOS ---
-# (Puedes crear estos en app/schemas/event.py y app/schemas/user.py)
-class EventSimpleResponse(BaseModel):
-    id: UUID
-    title: str
-    startDate: datetime = Field(..., alias="startDate")
-    venue: str
-    multimedia: Optional[List[str]] = None
-
-    class Config:
-        from_attributes = True
-        populate_by_name = True
-
-class UserSimpleResponse(BaseModel):
-    id: UUID
-    firstName: str = Field(..., alias="firstName")
-    lastName: str = Field(..., alias="lastName")
-    profilePhoto: Optional[str] = Field(None, alias="profilePhoto")
-
-    class Config:
-        from_attributes = True
-        populate_by_name = True
-# ---------------------------------
-
+# Ahora las importaciones funcionan
+from .event import EventSimpleResponse
+from .user import UserSimpleResponse
 
 class MarketplaceListingResponse(BaseModel):
     id: UUID
     title: str
     description: Optional[str] = None
     price: float
-    originalPrice: Optional[float] = Field(None, alias="originalPrice")
-    isNegotiable: bool = Field(..., alias="isNegotiable")
-    status: str # Ya es un ENUM, str está bien
-    sellerNotes: Optional[str] = Field(None, alias="sellerNotes")
-    transferMethod: Optional[str] = Field(None, alias="transferMethod")
-    createdAt: datetime = Field(..., alias="createdAt")
-    expiresAt: Optional[datetime] = Field(None, alias="expiresAt")
-    
+    originalPrice: Optional[float] = Field(None, alias="original_price")
+    isNegotiable: bool = Field(..., alias="is_negotiable")                      # <-- SIN ALIAS
+    status: str
+    sellerNotes: Optional[str] = Field(None, alias="seller_notes")
+    transferMethod: Optional[str] = Field(None, alias="transfer_method")
+    createdAt: datetime = Field(..., alias="created_at")
+    expiresAt: Optional[datetime] = Field(None, alias="expires_at")
     # Datos relacionados que el frontend necesita
     event: EventSimpleResponse
     seller: UserSimpleResponse
     
-    ticketId: UUID = Field(..., alias="ticketId")
-    eventId: UUID = Field(..., alias="eventId")
-    sellerId: UUID = Field(..., alias="sellerId")
+    ticketId: UUID = Field(..., alias="ticket_id")
+    eventId: UUID = Field(..., alias="event_id")
+    sellerId: UUID = Field(..., alias="seller_id")
 
     class Config:
         from_attributes = True
@@ -64,5 +40,5 @@ class PaginatedMarketplaceListings(BaseModel):
     totalPages: int = Field(..., alias="totalPages")
 
     class Config:
-        from_attributes = True
+        # Nota: Esta NO lleva from_attributes = True
         populate_by_name = True

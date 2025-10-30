@@ -6,7 +6,7 @@ from uuid import UUID
 class EventSimpleResponse(BaseModel):
     id: UUID
     title: str
-    startDate: datetime = Field(..., alias="startDate")
+    startDate: datetime 
     venue: str
     multimedia: Optional[List[str]] = None
 
