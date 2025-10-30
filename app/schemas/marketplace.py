@@ -1,9 +1,7 @@
-# app/schemas/marketplace.py
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 from uuid import UUID
-# Ahora las importaciones funcionan
 from .event import EventSimpleResponse
 from .user import UserSimpleResponse
 
@@ -12,20 +10,34 @@ class MarketplaceListingResponse(BaseModel):
     title: str
     description: Optional[str] = None
     price: float
+    
+
     originalPrice: Optional[float] = Field(None, alias="original_price")
-    isNegotiable: bool = Field(..., alias="is_negotiable")                      # <-- SIN ALIAS
-    status: str
+    
+    isNegotiable: bool = Field(..., alias="is_negotiable")
+    isFeatured: bool = Field(..., alias="is_featured") # <-- Añadido por si acaso
+    
+    status: str 
+    
+    
     sellerNotes: Optional[str] = Field(None, alias="seller_notes")
     transferMethod: Optional[str] = Field(None, alias="transfer_method")
     createdAt: datetime = Field(..., alias="created_at")
     expiresAt: Optional[datetime] = Field(None, alias="expires_at")
-    # Datos relacionados que el frontend necesita
+    soldAt: Optional[datetime] = Field(None, alias="sold_at") # <-- Añadido por si acaso
+    views_count: str 
+    inquiries_count: str 
+    
+    
     event: EventSimpleResponse
     seller: UserSimpleResponse
+    
     
     ticketId: UUID = Field(..., alias="ticket_id")
     eventId: UUID = Field(..., alias="event_id")
     sellerId: UUID = Field(..., alias="seller_id")
+    buyerId: Optional[UUID] = Field(None, alias="buyer_id") # <-- Añadido por si acaso
+    
 
     class Config:
         from_attributes = True
@@ -40,5 +52,5 @@ class PaginatedMarketplaceListings(BaseModel):
     totalPages: int = Field(..., alias="totalPages")
 
     class Config:
-        # Nota: Esta NO lleva from_attributes = True
+        # Esta se queda SIN 'from_attributes = True'
         populate_by_name = True
