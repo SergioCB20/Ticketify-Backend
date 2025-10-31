@@ -4,12 +4,21 @@ from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.core.database import get_db
+
+
 from app.services.auth_service import AuthService
 from app.models.user import User, UserRole
 from app.utils.security import CREDENTIALS_EXCEPTION
 
 # Security scheme
 security = HTTPBearer()
+from fastapi import Depends, HTTPException, status
+from app.models.user import User
+
+
+
+
+
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
@@ -41,6 +50,18 @@ def get_current_active_user(
             detail="Usuario inactivo"
         )
     return current_user
+
+def get_current_organizer_user(
+    current_user: User = Depends(get_current_active_user),
+) -> User:
+    roles = [role.name.upper() for role in current_user.roles]  # <-- corrección
+    if "ORGANIZER" not in roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso como Organizer"
+        )
+    return current_user
+
 
 def require_role(allowed_roles: list[UserRole]):
     """Decorator to require specific user roles"""
