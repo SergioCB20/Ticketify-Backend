@@ -1,115 +1,145 @@
-from fastapi import APIRouter, Depends, status, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from uuid import UUID
 from typing import List
+from uuid import UUID
 
+from app.schemas.promotion_schema import PromotionResponse, PromotionCreate, PromotionUpdate
+from app.services.promotion_service import PromotionService
+from app.utils.security import get_current_user
 from app.core.database import get_db
-from app.schemas.promotion_schema import PromotionCreate, PromotionUpdate, PromotionResponse
-from app.services import promotion_service
-from app.utils.security import get_current_user  # depende de tu JWT/auth
 
-router = APIRouter(
-    prefix="/promotions",
-    tags=["Promotions"]
-)
-
-# -----------------------------------------------------------
-# 📌 Crear una promoción
-# -----------------------------------------------------------
-@router.post("/", response_model=PromotionResponse, status_code=status.HTTP_201_CREATED)
-def create_promotion(
-    promo_data: PromotionCreate,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Crear una nueva promoción (por organizador o admin).
-    """
-    return promotion_service.create_promotion(
-        db=db,
-        name=promo_data.name,
-        code=promo_data.code,
-        promotion_type=promo_data.promotion_type,
-        discount_value=promo_data.discount_value,
-        start_date=promo_data.start_date,
-        end_date=promo_data.end_date,
-        created_by_id=promo_data.created_by_id,
-        description=promo_data.description,
-        max_discount_amount=promo_data.max_discount_amount,
-        min_purchase_amount=promo_data.min_purchase_amount,
-        max_uses=promo_data.max_uses,
-        max_uses_per_user=promo_data.max_uses_per_user,
-        applies_to_all_events=promo_data.applies_to_all_events,
-        applies_to_new_users_only=promo_data.applies_to_new_users_only,
-        is_public=promo_data.is_public,
-        event_id=promo_data.event_id
-    )
+router = APIRouter(prefix="/promotions", tags=["Promotions"])
 
 
-# -----------------------------------------------------------
-# 📌 Obtener todas las promociones activas
-# -----------------------------------------------------------
+# =========================================================
+# 🔹 Obtener todas las promociones (modo admin o prueba)
+# =========================================================
 @router.get("/", response_model=List[PromotionResponse])
 def get_all_promotions(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
-    """
-    Listar todas las promociones activas y vigentes.
-    """
-    return promotion_service.get_active_promotions(db)
+    try:
+        promotions = PromotionService.get_all(db)
+        return promotions
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# -----------------------------------------------------------
-# 📌 Obtener promociones de un evento
-# -----------------------------------------------------------
-@router.get("/event/{event_id}", response_model=List[PromotionResponse])
-def get_promotions_by_event(
-    event_id: UUID,
+# =========================================================
+# 🔹 Obtener una promoción por ID
+# =========================================================
+@router.get("/{promotion_id}", response_model=PromotionResponse)
+def get_promotion_by_id(
+    promotion_id: UUID,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user=Depends(get_current_user)
+):
+    try:
+        promo = PromotionService.get_by_id(db, str(promotion_id))
+        if not promo:
+            raise HTTPException(status_code=404, detail="Promoción no encontrada")
+        return promo
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =========================================================
+# 🔹 Crear una nueva promoción
+# =========================================================
+@router.post("/", response_model=PromotionResponse, status_code=status.HTTP_201_CREATED)
+def create_promotion(
+    payload: PromotionCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
 ):
     """
-    Listar todas las promociones asociadas a un evento específico.
+    Crea una nueva promoción asociada a un evento.
     """
-    promotions = promotion_service.get_promotions_by_event(db, event_id)
-    if not promotions:
-        raise HTTPException(status_code=404, detail="No se encontraron promociones para este evento.")
-    return promotions
+    try:
+        print("📦 Payload recibido en FastAPI:", payload)
+        print("📦 Payload dict():", payload.dict())  # 👈 añade esta línea
+        
+        promotion = PromotionService.create(
+            db,
+            name=payload.name,
+            description=payload.description,
+            code=payload.code,
+            promotion_type=payload.promotion_type,
+            discount_value=payload.discount_value,
+            max_discount_amount=payload.max_discount_amount,
+            min_purchase_amount=payload.min_purchase_amount,
+            max_uses=payload.max_uses,
+            max_uses_per_user=payload.max_uses_per_user,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            applies_to_all_events=payload.applies_to_all_events,
+            applies_to_new_users_only=payload.applies_to_new_users_only,
+            is_public=payload.is_public,
+            created_by_id=current_user["id"],   # 🔥 lo tomamos del usuario autenticado
+            event_id=payload.event_id
+        )
+        return promotion
+    except Exception as e:
+        import traceback
+        print("❌ ERROR en create_promotion:", e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# -----------------------------------------------------------
-# 📌 Actualizar una promoción
-# -----------------------------------------------------------
-@router.put("/{promo_id}", response_model=PromotionResponse)
+# =========================================================
+# 🔹 Actualizar una promoción existente (edición completa)
+# =========================================================
+@router.put("/{promotion_id}", response_model=PromotionResponse)
 def update_promotion(
-    promo_id: UUID,
-    update_data: PromotionUpdate,
+    promotion_id: UUID,
+    payload: PromotionUpdate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
     """
-    Actualizar una promoción existente.
+    Actualiza los datos de una promoción.
+    Campos editables:
+      - name, description, code
+      - promotion_type, discount_value
+      - start_date, end_date
     """
-    updated = promotion_service.update_promotion(db, promo_id, update_data)
-    if not updated:
-        raise HTTPException(status_code=404, detail="Promoción no encontrada.")
-    return updated
+    try:
+        print("🛠 Payload recibido en update:", payload.dict(exclude_unset=True))
+
+        promotion = PromotionService.update(
+            db=db,
+            promo_id=promotion_id,
+            update_data=payload,
+            current_user_id=current_user["id"]
+        )
+        return promotion
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print("❌ ERROR en update_promotion:", e)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# -----------------------------------------------------------
-# 📌 Eliminar una promoción
-# -----------------------------------------------------------
-@router.delete("/{promo_id}", status_code=status.HTTP_200_OK)
+
+# =========================================================
+# 🔹 Eliminar una promoción
+# =========================================================
+@router.delete("/{promotion_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_promotion(
-    promo_id: UUID,
+    promotion_id: UUID,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
     """
-    Eliminar una promoción existente.
+    Elimina una promoción (solo si pertenece al evento del organizador).
     """
-    success = promotion_service.delete_promotion(db, promo_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Promoción no encontrada.")
-    return {"message": "Promoción eliminada correctamente."}
+    try:
+        PromotionService.delete(db, str(promotion_id))
+        return {"detail": "Promoción eliminada correctamente"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

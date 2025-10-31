@@ -124,7 +124,20 @@ class Promotion(Base):
         return discount
     
     def to_dict(self):
-        """Return serialized dictionary of the promotion"""
+        """Return serialized dictionary of the promotion (safe for ORM or dict relations)."""
+        # Manejar correctamente event_id, sea relación ORM o dict
+        event_id = None
+        try:
+            if hasattr(self, "event_id") and self.event_id:
+                event_id = str(self.event_id)
+            elif hasattr(self, "event") and self.event is not None:
+                if isinstance(self.event, dict):
+                    event_id = self.event.get("id")
+                elif hasattr(self.event, "id"):
+                    event_id = str(self.event.id)
+        except Exception:
+            event_id = None
+
         return {
             "id": str(self.id),
             "name": self.name,
@@ -146,7 +159,9 @@ class Promotion(Base):
             "status": self.status.value,
             "isPublic": self.is_public,
             "isActive": self.is_active,
+            "eventId": event_id,  # ✅ ahora sí se incluye correctamente
             "createdById": str(self.created_by_id),
             "createdAt": self.created_at.isoformat() if self.created_at else None,
-            "updatedAt": self.updated_at.isoformat() if self.updated_at else None
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
         }
+

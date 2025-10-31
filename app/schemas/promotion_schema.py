@@ -51,10 +51,15 @@ class PromotionCreate(PromotionBase):
 class PromotionUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    code: Optional[str] = None
+    promotion_type: Optional[PromotionType] = None
     discount_value: Optional[float] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
-    status: Optional[PromotionStatus] = None
+
+    class Config:
+        orm_mode = True
+
 
 
 # =========================================================
