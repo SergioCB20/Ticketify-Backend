@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
 from typing import List
@@ -59,7 +60,7 @@ class Settings(BaseSettings):
         return v
 
     class Config:
-        env_file = ".env.example"
+        env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
 

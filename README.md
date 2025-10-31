@@ -126,7 +126,26 @@ alembic revision --autogenerate -m "Initial migration"
 alembic upgrade head
 ```
 
-### 6. Ejecutar servidor
+### 6. Poblar base de datos con datos de prueba
+
+```bash
+# 🌱 OPCIÓN RECOMENDADA: Ejecutar todo de una vez
+python seed_all.py
+
+# O ejecutar scripts individuales:
+python seed_initial_data.py        # Crear roles, permisos y categorías
+python seed_events_for_testing.py  # Crear usuarios y eventos de prueba
+
+# 🔍 Verificar estado de la base de datos
+python check_database.py
+
+# 🧹 Limpiar datos de prueba (CUIDADO!)
+python clean_database.py
+```
+
+**Nota**: Ver [SEEDING_README.md](SEEDING_README.md) para más detalles sobre los scripts de seeding.
+
+### 7. Ejecutar servidor
 
 ```bash
 # Desarrollo
@@ -135,6 +154,33 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 # O usando el script
 python app/main.py
 ```
+
+## 🌱 Scripts de Datos de Prueba
+
+### Archivos disponibles:
+
+- **`seed_all.py`** ⭐ - Script maestro que ejecuta todo
+- **`seed_initial_data.py`** - Roles, permisos y categorías
+- **`seed_events_for_testing.py`** - Usuarios y eventos de prueba
+- **`check_database.py`** - Verificar estado de la BD
+- **`clean_database.py`** - Limpiar datos de prueba
+
+### Credenciales de prueba:
+```
+Email: organizador1@test.com
+Email: organizador2@test.com  
+Email: organizador3@test.com
+Password (todos): Test123!
+```
+
+### Eventos de prueba incluyen:
+- ✅ 18+ eventos variados
+- ✅ Todas las categorías (Conciertos, Deportes, Arte, etc.)
+- ✅ Diferentes rangos de precio (Gratuito - S/ 800)
+- ✅ Diferentes fechas (pasados, próximos, lejanos)
+- ✅ Optimizados para testing de filtros
+
+Ver documentación completa en [SEEDING_README.md](SEEDING_README.md)
 
 ## 🔐 Autenticación
 
@@ -182,6 +228,19 @@ alembic history
 
 # Rollback
 alembic downgrade -1
+```
+
+### Comandos de verificación:
+
+```bash
+# Ver estadísticas de la base de datos
+python check_database.py
+
+# Limpiar datos de prueba
+python clean_database.py
+
+# Volver a poblar
+python seed_all.py
 ```
 
 ## 🔧 Desarrollo
@@ -234,8 +293,17 @@ Una vez que el servidor esté corriendo:
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 
+## 📚 Documentación Adicional
+
+- [SEEDING_README.md](SEEDING_README.md) - Guía completa de scripts de datos de prueba
+- [API_SEARCH_GUIDE.md](API_SEARCH_GUIDE.md) - Guía de filtros y búsqueda (si existe)
+- [MODELS_COMPLETED.md](MODELS_COMPLETED.md) - Documentación de modelos (si existe)
+
 ## 🔄 Próximos Pasos
 
+- [x] Autenticación completa
+- [x] Modelos base implementados
+- [x] Scripts de seeding
 - [ ] Endpoints de eventos (CRUD)
 - [ ] Sistema de compras y pagos
 - [ ] Marketplace de reventa
@@ -243,7 +311,6 @@ Una vez que el servidor esté corriendo:
 - [ ] WebSockets para actualizaciones en tiempo real
 - [ ] Sistema de archivos para imágenes
 - [ ] Tests unitarios y de integración
-- [ ] Documentación de API con OpenAPI
 - [ ] Deploy con Docker
 
 ## 🚀 Deploy
@@ -281,4 +348,4 @@ Este proyecto es parte del curso de Ingeniería de Software - 2025-2
 
 ---
 
-**Estado actual**: ✅ Autenticación completa y modelos base implementados
+**Estado actual**: ✅ Autenticación completa, modelos base y scripts de seeding implementados

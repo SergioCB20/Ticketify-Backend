@@ -1,6 +1,7 @@
+# -*- coding: utf-8 -*-
 """
-Script de ejemplo para crear datos iniciales después de la migración
-Ejecutar después de aplicar: alembic upgrade head
+Script de ejemplo para crear datos iniciales despues de la migracion
+Ejecutar despues de aplicar: alembic upgrade head
 """
 
 from app.core.database import SessionLocal
@@ -11,10 +12,16 @@ from app.models import (
 import uuid
 
 def create_roles_and_permissions():
-    """Crear roles y permisos básicos del sistema"""
+    """Crear roles y permisos basicos del sistema"""
     db = SessionLocal()
     
     try:
+        # Verificar si ya existen permisos
+        existing_permissions = db.query(Permission).first()
+        if existing_permissions:
+            print("⚠️  Los permisos ya existen, saltando creacion...")
+            return
+        
         # Crear Permisos
         permissions = [
             Permission(code="event.create", name="Crear eventos", description="Permite crear nuevos eventos"),
@@ -72,63 +79,130 @@ def create_roles_and_permissions():
 
 
 def create_event_categories():
-    """Crear categorías de eventos básicas"""
+    """Crear categorias de eventos que coinciden con el frontend"""
     db = SessionLocal()
     
     try:
+        # Verificar si ya existen categorias
+        existing_categories = db.query(EventCategory).first()
+        if existing_categories:
+            print("⚠️  Las categorias ya existen, saltando creacion...")
+            return
+        
         categories = [
             EventCategory(
-                name="Música",
-                description="Conciertos, festivales y eventos musicales",
-                slug="musica",
+                name="Arte & Cultura",
+                description="Exposiciones de arte, museos, galerias y eventos culturales",
+                slug="arte-cultura",
+                icon="🎨",
+                color="#8B5CF6",  # purple-500
+                sort_order=1,
+                is_active=True,
+                is_featured=True
+            ),
+            EventCategory(
+                name="Ayuda Social",
+                description="Eventos beneficos, recaudaciones de fondos y actividades solidarias",
+                slug="ayuda-social",
+                icon="🤝",
+                color="#10B981",  # emerald-500
+                sort_order=2,
+                is_active=True,
+                is_featured=False
+            ),
+            EventCategory(
+                name="Cine",
+                description="Peliculas, festivales de cine y proyecciones especiales",
+                slug="cine",
+                icon="🎬",
+                color="#EC4899",  # pink-500
+                sort_order=3,
+                is_active=True,
+                is_featured=True
+            ),
+            EventCategory(
+                name="Comidas & Bebidas",
+                description="Festivales gastronomicos, catas, degustaciones y eventos culinarios",
+                slug="comidas-bebidas",
+                icon="🍽️",
+                color="#F59E0B",  # amber-500
+                sort_order=4,
+                is_active=True,
+                is_featured=False
+            ),
+            EventCategory(
+                name="Conciertos",
+                description="Conciertos de musica en vivo, festivales musicales y shows",
+                slug="conciertos",
                 icon="🎵",
-                color="#FF6B6B"
+                color="#EF4444",  # red-500
+                sort_order=5,
+                is_active=True,
+                is_featured=True
+            ),
+            EventCategory(
+                name="Cursos y talleres",
+                description="Talleres educativos, cursos, seminarios y capacitaciones",
+                slug="cursos-talleres",
+                icon="📚",
+                color="#06B6D4",  # cyan-500
+                sort_order=6,
+                is_active=True,
+                is_featured=False
             ),
             EventCategory(
                 name="Deportes",
-                description="Eventos deportivos y competencias",
+                description="Eventos deportivos, competencias, partidos y actividades fisicas",
                 slug="deportes",
                 icon="⚽",
-                color="#4ECDC4"
+                color="#3B82F6",  # blue-500
+                sort_order=7,
+                is_active=True,
+                is_featured=True
             ),
             EventCategory(
-                name="Teatro",
-                description="Obras de teatro y espectáculos",
-                slug="teatro",
-                icon="🎭",
-                color="#95E1D3"
+                name="Donacion",
+                description="Eventos de donacion, campanas solidarias y recaudaciones",
+                slug="donacion",
+                icon="❤️",
+                color="#F43F5E",  # rose-500
+                sort_order=8,
+                is_active=True,
+                is_featured=False
             ),
             EventCategory(
-                name="Conferencias",
-                description="Conferencias, seminarios y charlas",
-                slug="conferencias",
-                icon="💼",
-                color="#F38181"
+                name="Entretenimiento",
+                description="Shows, espectaculos, performances y eventos de entretenimiento",
+                slug="entretenimiento",
+                icon="🎪",
+                color="#6366F1",  # indigo-500
+                sort_order=9,
+                is_active=True,
+                is_featured=True
             ),
             EventCategory(
-                name="Comedia",
-                description="Stand-up comedy y espectáculos de humor",
-                slug="comedia",
-                icon="😂",
-                color="#FECA57"
-            ),
-            EventCategory(
-                name="Arte y Cultura",
-                description="Exposiciones, museos y eventos culturales",
-                slug="arte-cultura",
-                icon="🎨",
-                color="#A29BFE"
+                name="Festivales",
+                description="Festivales de diversos tipos, ferias y celebraciones",
+                slug="festivales",
+                icon="🎉",
+                color="#EAB308",  # yellow-500
+                sort_order=10,
+                is_active=True,
+                is_featured=True
             ),
         ]
         
         db.add_all(categories)
         db.commit()
         
-        print("✅ Categorías de eventos creadas exitosamente")
+        print("✅ Categorias de eventos creadas exitosamente")
+        print(f"   Total de categorias: {len(categories)}")
+        for cat in categories:
+            print(f"   - {cat.icon} {cat.name} ({cat.slug})")
         
     except Exception as e:
         db.rollback()
-        print(f"❌ Error al crear categorías: {e}")
+        print(f"❌ Error al crear categorias: {e}")
     finally:
         db.close()
 
@@ -138,6 +212,7 @@ def main():
     print("🌱 Iniciando seeding de la base de datos...\n")
     
     create_roles_and_permissions()
+    print()
     create_event_categories()
     
     print("\n✅ Seeding completado!")
