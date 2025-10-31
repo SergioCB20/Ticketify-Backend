@@ -65,10 +65,14 @@ class AuthService:
                 firstName=user.firstName,
                 lastName=user.lastName,
                 phoneNumber=user.phoneNumber,
+                documentType=user.documentType.value if user.documentType else None,
                 documentId=user.documentId,
+                country=user.country,
+                city=user.city,
+                gender=user.gender.value if user.gender else None,
                 profilePhoto=user.profilePhoto,
                 isActive=user.isActive,
-                roles=self._get_user_roles(user),  # ✅ AGREGADO
+                roles=self._get_user_roles(user),
                 createdAt=user.createdAt,
                 lastLogin=user.lastLogin
             )

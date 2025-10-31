@@ -101,7 +101,11 @@ async def get_user_profile(
         firstName=current_user.firstName,
         lastName=current_user.lastName,
         phoneNumber=current_user.phoneNumber,
+        documentType=current_user.documentType.value if current_user.documentType else None,
         documentId=current_user.documentId,
+        country=current_user.country,
+        city=current_user.city,
+        gender=current_user.gender.value if current_user.gender else None,
         profilePhoto=current_user.profilePhoto,
         isActive=current_user.isActive,
         roles=roles,
@@ -118,8 +122,19 @@ async def update_user_profile(
     """
     Update current user profile
     
-    Only provided fields will be updated
+    Only provided fields will be updated. You can update:
+    - email: New email address (must be unique)
+    - firstName: First name
+    - lastName: Last name
+    - phoneNumber: Phone number
+    - country: Country of residence
+    - city: City of residence
+    - gender: Gender (masculino, femenino, otro, prefiero-no-decir)
+    - profilePhoto: Profile photo URL
+    
+    Note: If you change your email, you'll need to verify it again.
     """
+
     from app.repositories.user_repository import UserRepository
     
     user_repo = UserRepository(db)
@@ -131,15 +146,23 @@ async def update_user_profile(
             detail="Error al actualizar el perfil"
         )
     
+    # Get user roles
+    roles = [role.name for role in updated_user.roles] if updated_user.roles else []
+    
     return UserResponse(
         id=str(updated_user.id),
         email=updated_user.email,
         firstName=updated_user.firstName,
         lastName=updated_user.lastName,
         phoneNumber=updated_user.phoneNumber,
+        documentType=updated_user.documentType.value if updated_user.documentType else None,
         documentId=updated_user.documentId,
+        country=updated_user.country,
+        city=updated_user.city,
+        gender=updated_user.gender.value if updated_user.gender else None,
         profilePhoto=updated_user.profilePhoto,
         isActive=updated_user.isActive,
+        roles=roles,
         createdAt=updated_user.createdAt,
         lastLogin=updated_user.lastLogin
     )
