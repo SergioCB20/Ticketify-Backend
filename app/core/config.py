@@ -59,7 +59,7 @@ class Settings(BaseSettings):
         return v
 
     class Config:
-        env_file = ".env.example"
+        env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
 

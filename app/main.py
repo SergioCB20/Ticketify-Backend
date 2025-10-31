@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+
 # Core configuration
 from app.core.config import settings
 from app.api import api_router
