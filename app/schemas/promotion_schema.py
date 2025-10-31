@@ -4,11 +4,14 @@ from uuid import UUID
 from typing import Optional, List
 from enum import Enum
 
+
+# =========================================================
+# ENUMS
+# =========================================================
 class PromotionType(str, Enum):
     PERCENTAGE = "PERCENTAGE"
     FIXED_AMOUNT = "FIXED_AMOUNT"
-    BUY_ONE_GET_ONE = "BUY_ONE_GET_ONE"
-    EARLY_BIRD = "EARLY_BIRD"
+
 
 class PromotionStatus(str, Enum):
     ACTIVE = "ACTIVE"
@@ -16,6 +19,10 @@ class PromotionStatus(str, Enum):
     EXPIRED = "EXPIRED"
     USED_UP = "USED_UP"
 
+
+# =========================================================
+# BASE SCHEMA
+# =========================================================
 class PromotionBase(BaseModel):
     name: str
     description: Optional[str] = None
@@ -28,12 +35,18 @@ class PromotionBase(BaseModel):
     max_uses_per_user: Optional[int] = None
     start_date: datetime
     end_date: datetime
+    applies_to_all_events: bool = False
     applies_to_new_users_only: bool = False
     is_public: bool = True
 
+
+# =========================================================
+# CREATE / UPDATE
+# =========================================================
 class PromotionCreate(PromotionBase):
     event_id: UUID
     created_by_id: UUID
+
 
 class PromotionUpdate(BaseModel):
     name: Optional[str] = None
@@ -43,10 +56,15 @@ class PromotionUpdate(BaseModel):
     end_date: Optional[datetime] = None
     status: Optional[PromotionStatus] = None
 
+
+# =========================================================
+# RESPONSE
+# =========================================================
 class PromotionResponse(PromotionBase):
     id: UUID
     status: PromotionStatus
-    event_ids: Optional[List[UUID]] = []
+    event_id: UUID
+    applies_to_all_events: bool
     created_by_id: UUID
     created_at: datetime
     updated_at: datetime

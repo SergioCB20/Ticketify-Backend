@@ -1,16 +1,23 @@
 from sqlalchemy.orm import Session
 from uuid import UUID
 from typing import List, Optional
+from datetime import datetime, timezone
+
 from app.models.promotion import Promotion
 from app.models.event import Event
-from app.models.event_promotion import EventPromotion
 from app.schemas.promotion_schema import PromotionCreate, PromotionUpdate
-from datetime import datetime
+
 
 # -------------------------------------------------------------------
 # 📌 Crear promoción
 # -------------------------------------------------------------------
 def create_promotion(db: Session, promotion_data: PromotionCreate) -> Promotion:
+    # Verificar que el evento exista
+    event = db.query(Event).filter(Event.id == promotion_data.event_id).first()
+    if not event:
+        raise ValueError("El evento asociado no existe.")
+
+    # Crear nueva promoción
     new_promo = Promotion(
         name=promotion_data.name,
         description=promotion_data.description,
@@ -23,23 +30,15 @@ def create_promotion(db: Session, promotion_data: PromotionCreate) -> Promotion:
         max_uses_per_user=promotion_data.max_uses_per_user,
         start_date=promotion_data.start_date,
         end_date=promotion_data.end_date,
+        applies_to_all_events=promotion_data.applies_to_all_events,
         applies_to_new_users_only=promotion_data.applies_to_new_users_only,
         is_public=promotion_data.is_public,
-        created_by_id=promotion_data.created_by_id
+        created_by_id=promotion_data.created_by_id,
+        event_id=promotion_data.event_id
     )
 
-    # Guardar la promoción
     db.add(new_promo)
     db.commit()
-    db.refresh(new_promo)
-
-    # Asociar al evento
-    event = db.query(Event).filter(Event.id == promotion_data.event_id).first()
-    if event:
-        link = EventPromotion(event_id=event.id, promotion_id=new_promo.id)
-        db.add(link)
-        db.commit()
-
     db.refresh(new_promo)
     return new_promo
 
@@ -48,13 +47,7 @@ def create_promotion(db: Session, promotion_data: PromotionCreate) -> Promotion:
 # 📌 Obtener todas las promociones de un evento
 # -------------------------------------------------------------------
 def get_promotions_by_event(db: Session, event_id: UUID) -> List[Promotion]:
-    promotions = (
-        db.query(Promotion)
-        .join(EventPromotion, Promotion.id == EventPromotion.promotion_id)
-        .filter(EventPromotion.event_id == event_id)
-        .all()
-    )
-    return promotions
+    return db.query(Promotion).filter(Promotion.event_id == event_id).all()
 
 
 # -------------------------------------------------------------------
@@ -75,7 +68,7 @@ def update_promotion(db: Session, promo_id: UUID, update_data: PromotionUpdate) 
     for field, value in update_data.dict(exclude_unset=True).items():
         setattr(promo, field, value)
 
-    promo.updated_at = datetime.utcnow()
+    promo.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(promo)
     return promo

@@ -1,147 +1,119 @@
-from datetime import datetime, timedelta
-from typing import Union, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import HTTPException, status
-from fastapi import Depends, HTTPException
+from fastapi import HTTPException, status, Depends
 from fastapi.security import OAuth2PasswordBearer
-import secrets
-import string
+import secrets, string
 
 from app.core.config import settings
 
-# Ruta del endpoint de login
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
-# Password hashing
+# =========================================================
+# 🔐 CONFIGURACIÓN GENERAL
+# =========================================================
+# Corrige la ruta del login en Swagger
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
+# =========================================================
+# 🔑 PASSWORDS
+# =========================================================
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash"""
     return pwd_context.verify(plain_password, hashed_password)
 
 def get_password_hash(password: str) -> str:
-    """Hash a password"""
     return pwd_context.hash(password)
 
+
+# =========================================================
+# 🧩 JWT TOKENS
+# =========================================================
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Create JWT access token"""
+    """Genera token de acceso (por defecto 60 min)"""
     to_encode = data.copy()
-    
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=60))
     to_encode.update({"exp": expire, "type": "access"})
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 def create_refresh_token(data: dict) -> str:
-    """Create JWT refresh token (longer expiry)"""
+    """Genera token de refresco (7 días por defecto)"""
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=7)  # 7 days for refresh token
-    
+    expire = datetime.now(timezone.utc) + timedelta(days=7)
     to_encode.update({"exp": expire, "type": "refresh"})
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 def verify_token(token: str, token_type: str = "access") -> dict:
-    """Verify and decode JWT token"""
+    """Decodifica y valida token JWT"""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        
-        # Check token type
         if payload.get("type") != token_type:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token type mismatch"
-            )
-        
-        # Check expiration
-        exp = payload.get("exp")
-        if exp and datetime.utcnow() > datetime.fromtimestamp(exp):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token has expired"
-            )
-        
+            raise HTTPException(status_code=401, detail="Tipo de token inválido")
         return payload
-    
-    except JWTError:
+    except JWTError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
+            detail=f"Token inválido o expirado: {str(e)}",
             headers={"WWW-Authenticate": "Bearer"}
         )
 
+
+# =========================================================
+# 👤 USUARIO ACTUAL
+# =========================================================
+def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
+    """Obtiene el usuario autenticado desde el token"""
+    payload = verify_token(token, token_type="access")
+    user_id = payload.get("user_id")
+    email = payload.get("sub")
+    role = payload.get("role")
+
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Token inválido: falta el user_id")
+
+    return {"id": user_id, "email": email, "role": role}
+
+
+# =========================================================
+# 🔒 UTILIDADES
+# =========================================================
 def generate_verification_token(length: int = 32) -> str:
-    """Generate a secure random token for email verification or password reset"""
     alphabet = string.ascii_letters + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 def generate_reset_token() -> str:
-    """Generate password reset token"""
     return generate_verification_token(32)
 
 def is_token_expired(token_expires: datetime) -> bool:
-    """Check if a token has expired"""
-    return datetime.utcnow() > token_expires
+    return datetime.now(timezone.utc) > token_expires
 
 def validate_password_strength(password: str) -> dict:
-    """Validate password strength and return feedback"""
     issues = []
-    
-    if len(password) < 8:
-        issues.append("Debe tener al menos 8 caracteres")
-    
-    if not any(c.isupper() for c in password):
-        issues.append("Debe contener al menos una letra mayúscula")
-    
-    if not any(c.islower() for c in password):
-        issues.append("Debe contener al menos una letra minúscula")
-    
-    if not any(c.isdigit() for c in password):
-        issues.append("Debe contener al menos un número")
-    
-    # Optional: Check for special characters
+    if len(password) < 8: issues.append("Debe tener al menos 8 caracteres")
+    if not any(c.isupper() for c in password): issues.append("Debe tener al menos una mayúscula")
+    if not any(c.islower() for c in password): issues.append("Debe tener al menos una minúscula")
+    if not any(c.isdigit() for c in password): issues.append("Debe tener al menos un número")
     special_chars = "!@#$%^&*(),.?\":{}|<>"
-    if not any(c in special_chars for c in password):
-        issues.append("Se recomienda incluir al menos un carácter especial")
-    
-    return {
-        "is_strong": len(issues) == 0,
-        "issues": issues
-    }
+    if not any(c in special_chars for c in password): issues.append("Se recomienda incluir un carácter especial")
+    return {"is_strong": len(issues) == 0, "issues": issues}
 
-def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
-    """
-    Extrae el usuario actual desde el JWT en la cabecera Authorization.
-    Devuelve un diccionario con los datos del token decodificado.
-    """
-    payload = verify_token(token, token_type="access")
 
-    user_id = payload.get("id") or payload.get("sub")
-    role = payload.get("role")
-
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Token inválido: falta el ID del usuario")
-
-    return {"id": user_id, "role": role}
-
-# Security constants
+# =========================================================
+# ⚠️ EXCEPCIONES ESTÁNDAR
+# =========================================================
 CREDENTIALS_EXCEPTION = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
-    detail="Could not validate credentials",
+    detail="Credenciales inválidas",
     headers={"WWW-Authenticate": "Bearer"},
 )
 
 INACTIVE_USER_EXCEPTION = HTTPException(
     status_code=status.HTTP_400_BAD_REQUEST,
-    detail="Inactive user"
+    detail="Usuario inactivo"
 )
 
 INVALID_CREDENTIALS_EXCEPTION = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
-    detail="Incorrect email or password"
+    detail="Correo o contraseña incorrectos"
 )
-

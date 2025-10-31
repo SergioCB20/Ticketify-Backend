@@ -50,7 +50,7 @@ class User(Base):
 
 
     # Relationships
-    created_promotions = relationship("Promotion",back_populates="organizer",cascade="all, delete-orphan")
+    created_promotions = relationship("Promotion",back_populates="created_by",cascade="all, delete-orphan")
     roles = relationship("Role", secondary=user_roles, back_populates="users")
     organized_events = relationship("Event", back_populates="organizer", foreign_keys="Event.organizer_id")
     tickets = relationship("Ticket", foreign_keys="Ticket.user_id", back_populates="user")

@@ -1,18 +1,19 @@
-from __future__ import annotations  # ✅ habilita anotaciones diferidas (evita errores de orden de carga)
-from sqlalchemy import Column, String, Boolean, DateTime, Enum, Integer, Numeric, Text, ForeignKey
+from sqlalchemy import Column, String, Boolean, DateTime, Enum, Integer, Numeric, Text, ForeignKey, Table
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import uuid
 import enum
+from datetime import datetime, timezone
 from app.core.database import Base
 
 
+# =========================================================
+# ENUMS
+# =========================================================
 class PromotionType(str, enum.Enum):
     PERCENTAGE = "PERCENTAGE"
     FIXED_AMOUNT = "FIXED_AMOUNT"
-    BUY_ONE_GET_ONE = "BUY_ONE_GET_ONE"
-    EARLY_BIRD = "EARLY_BIRD"
 
 
 class PromotionStatus(str, enum.Enum):
@@ -22,96 +23,108 @@ class PromotionStatus(str, enum.Enum):
     USED_UP = "USED_UP"
 
 
+
+# =========================================================
+# MODELO PRINCIPAL: PROMOTION
+# =========================================================
 class Promotion(Base):
     __tablename__ = "promotions"
-
+    
     # Primary key
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-
+    
     # Basic information
     name = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     code = Column(String(50), unique=True, index=True, nullable=False)
-
+    
     # Promotion details
     promotion_type = Column(Enum(PromotionType), nullable=False)
-    discount_value = Column(Numeric(10, 2), nullable=False)
-    max_discount_amount = Column(Numeric(10, 2), nullable=True)
-    min_purchase_amount = Column(Numeric(10, 2), nullable=True)
-
+    discount_value = Column(Numeric(10, 2), nullable=False)  # Percentage or fixed amount
+    max_discount_amount = Column(Numeric(10, 2), nullable=True)  # Max discount for percentage
+    min_purchase_amount = Column(Numeric(10, 2), nullable=True)  # Minimum purchase to apply
+    
     # Usage limits
-    max_uses = Column(Integer, nullable=True)
+    max_uses = Column(Integer, nullable=True)  # Null = unlimited
     max_uses_per_user = Column(Integer, nullable=True)
     current_uses = Column(Integer, default=0, nullable=False)
-
+    
     # Date range
     start_date = Column(DateTime(timezone=True), nullable=False)
     end_date = Column(DateTime(timezone=True), nullable=False)
-
+    
     # Applicability
     applies_to_all_events = Column(Boolean, default=False, nullable=False)
     applies_to_new_users_only = Column(Boolean, default=False, nullable=False)
-
+    
     # Status
     status = Column(Enum(PromotionStatus), default=PromotionStatus.ACTIVE, nullable=False)
-    is_public = Column(Boolean, default=True, nullable=False)
-
+    is_public = Column(Boolean, default=True, nullable=False)  # Public or private code
+    
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-
+    
     # Foreign keys
-    organizer_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    event_id = Column(UUID(as_uuid=True), ForeignKey("events.id"), nullable=False)
 
-    # ✅ Relationships (con anotaciones forward)
-    organizer = relationship("User", back_populates="created_promotions")
-    purchases = relationship("Purchase", back_populates="promotion", cascade="all, delete-orphan")
-    events = relationship("Event", secondary="event_promotions", back_populates="promotions")
+    # Relationships
+    created_by = relationship("User", back_populates="created_promotions")
+    purchases = relationship("Purchase", back_populates="promotion")
+    event = relationship("Event", back_populates="promotions")
 
+    # =========================================================
+    # MÉTODOS AUXILIARES
+    # =========================================================
     def __repr__(self):
-        return f"<Promotion(name='{self.name}', type='{self.promotion_type}', organizer_id='{self.organizer_id}')>"
-
+        return f"<Promotion(code='{self.code}', type='{self.promotion_type}')>"
+    
     @property
     def is_active(self):
-        from datetime import datetime
-        now = datetime.utcnow()
+        """Check if promotion is currently active"""
+        now = datetime.now(timezone.utc)
         return (
             self.status == PromotionStatus.ACTIVE
             and self.start_date <= now <= self.end_date
             and (self.max_uses is None or self.current_uses < self.max_uses)
         )
-
+    
     @property
     def remaining_uses(self):
+        """Get remaining uses for this promotion"""
         if self.max_uses is None:
             return None
         return max(0, self.max_uses - self.current_uses)
-
+    
     @property
     def usage_percentage(self):
+        """Get usage percentage"""
         if self.max_uses is None or self.max_uses == 0:
             return 0
         return (self.current_uses / self.max_uses) * 100
-
+    
     def calculate_discount(self, purchase_amount: float) -> float:
+        """Calculate discount amount for a given purchase amount"""
         if not self.is_active:
             return 0.0
-
+            
         if self.min_purchase_amount and purchase_amount < float(self.min_purchase_amount):
             return 0.0
-
+        
         discount = 0.0
-
+        
         if self.promotion_type == PromotionType.PERCENTAGE:
             discount = purchase_amount * (float(self.discount_value) / 100)
             if self.max_discount_amount:
                 discount = min(discount, float(self.max_discount_amount))
         elif self.promotion_type == PromotionType.FIXED_AMOUNT:
             discount = min(float(self.discount_value), purchase_amount)
-
+        
         return discount
-
+    
     def to_dict(self):
+        """Return serialized dictionary of the promotion"""
         return {
             "id": str(self.id),
             "name": self.name,
@@ -133,7 +146,7 @@ class Promotion(Base):
             "status": self.status.value,
             "isPublic": self.is_public,
             "isActive": self.is_active,
-            "createdById": str(self.organizer_id),
+            "createdById": str(self.created_by_id),
             "createdAt": self.created_at.isoformat() if self.created_at else None,
-            "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else None
         }

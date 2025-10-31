@@ -6,11 +6,13 @@ import uuid
 import enum
 from app.core.database import Base
 
+
 class EventStatus(str, enum.Enum):
     DRAFT = "DRAFT"
     PUBLISHED = "PUBLISHED"
     CANCELLED = "CANCELLED"
     COMPLETED = "COMPLETED"
+
 
 class Event(Base):
     __tablename__ = "events"
@@ -18,25 +20,25 @@ class Event(Base):
     # Primary key
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     
-    # Basic information (según diagrama)
+    # Basic information
     title = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     
-    # Event timing (ACTUALIZADO según diagrama)
-    startDate = Column(DateTime(timezone=True), nullable=False)  # Cambio de 'date'
-    endDate = Column(DateTime(timezone=True), nullable=False)  # NUEVO
+    # Event timing
+    startDate = Column(DateTime(timezone=True), nullable=False)
+    endDate = Column(DateTime(timezone=True), nullable=False)
     
-    # Location (según diagrama)
-    venue = Column(String(200), nullable=False)  # Renombrado de 'location'
+    # Location
+    venue = Column(String(200), nullable=False)
     
-    # Capacity (según diagrama)
-    totalCapacity = Column(Integer, nullable=False)  # Renombrado de 'capacity'
+    # Capacity
+    totalCapacity = Column(Integer, nullable=False)
     
     # Status
     status = Column(Enum(EventStatus), default=EventStatus.DRAFT, nullable=False)
     
-    # Multimedia (NUEVO según diagrama)
-    multimedia = Column(ARRAY(String), nullable=True)  # Lista de URLs de imágenes/videos
+    # Multimedia
+    multimedia = Column(ARRAY(String), nullable=True)
     
     # Timestamps
     createdAt = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -49,14 +51,17 @@ class Event(Base):
     # Relationships
     organizer = relationship("User", back_populates="organized_events")
     category = relationship("EventCategory", back_populates="events")
-    purchases = relationship("Purchase", back_populates="event", cascade="all, delete-orphan")
     ticket_types = relationship("TicketType", back_populates="event", cascade="all, delete-orphan")
     tickets = relationship("Ticket", back_populates="event")
     marketplace_listings = relationship("MarketplaceListing", back_populates="event")
     notifications = relationship("Notification", back_populates="event")
     schedules = relationship("EventSchedule", back_populates="event", cascade="all, delete-orphan")
     analytics = relationship("Analytics", back_populates="event", uselist=False)
-    
+    purchases = relationship("Purchase", back_populates="event")
+
+    # ✅ Relación 1:N con promociones (ya no many-to-many)
+    promotions = relationship("Promotion", back_populates="event", cascade="all, delete-orphan")
+
     def __repr__(self):
         return f"<Event(title='{self.title}', status='{self.status}')>"
     
@@ -111,9 +116,3 @@ class Event(Base):
             "createdAt": self.createdAt.isoformat() if self.createdAt else None,
             "updatedAt": self.updatedAt.isoformat() if self.updatedAt else None
         }
-    promotions = relationship(
-        "Promotion",
-        secondary="event_promotions",
-        back_populates="events"
-    )
-    

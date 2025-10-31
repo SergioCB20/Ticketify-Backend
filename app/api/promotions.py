@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.orm import Session
 from uuid import UUID
 from typing import List
@@ -6,7 +6,7 @@ from typing import List
 from app.core.database import get_db
 from app.schemas.promotion_schema import PromotionCreate, PromotionUpdate, PromotionResponse
 from app.services import promotion_service
-from app.utils.security import get_current_user  # <-- depende de cómo manejen autenticación JWT
+from app.utils.security import get_current_user  # depende de tu JWT/auth
 
 router = APIRouter(
     prefix="/promotions",
@@ -14,7 +14,7 @@ router = APIRouter(
 )
 
 # -----------------------------------------------------------
-# 📌 Crear una promoción para un evento
+# 📌 Crear una promoción
 # -----------------------------------------------------------
 @router.post("/", response_model=PromotionResponse, status_code=status.HTTP_201_CREATED)
 def create_promotion(
@@ -23,15 +23,45 @@ def create_promotion(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Crear una promoción para un evento específico.
-    Solo el organizador del evento puede hacerlo.
+    Crear una nueva promoción (por organizador o admin).
     """
-    organizer_id = current_user["id"]  # 🔸 o current_user.id según tu auth.py
-    return promotion_service.create_promotion_service(db, promo_data, organizer_id)
+    return promotion_service.create_promotion(
+        db=db,
+        name=promo_data.name,
+        code=promo_data.code,
+        promotion_type=promo_data.promotion_type,
+        discount_value=promo_data.discount_value,
+        start_date=promo_data.start_date,
+        end_date=promo_data.end_date,
+        created_by_id=promo_data.created_by_id,
+        description=promo_data.description,
+        max_discount_amount=promo_data.max_discount_amount,
+        min_purchase_amount=promo_data.min_purchase_amount,
+        max_uses=promo_data.max_uses,
+        max_uses_per_user=promo_data.max_uses_per_user,
+        applies_to_all_events=promo_data.applies_to_all_events,
+        applies_to_new_users_only=promo_data.applies_to_new_users_only,
+        is_public=promo_data.is_public,
+        event_id=promo_data.event_id
+    )
 
 
 # -----------------------------------------------------------
-# 📌 Obtener todas las promociones de un evento
+# 📌 Obtener todas las promociones activas
+# -----------------------------------------------------------
+@router.get("/", response_model=List[PromotionResponse])
+def get_all_promotions(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Listar todas las promociones activas y vigentes.
+    """
+    return promotion_service.get_active_promotions(db)
+
+
+# -----------------------------------------------------------
+# 📌 Obtener promociones de un evento
 # -----------------------------------------------------------
 @router.get("/event/{event_id}", response_model=List[PromotionResponse])
 def get_promotions_by_event(
@@ -40,27 +70,16 @@ def get_promotions_by_event(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Listar todas las promociones asociadas a un evento.
+    Listar todas las promociones asociadas a un evento específico.
     """
-    organizer_id = current_user["id"]
-    return promotion_service.get_promotions_by_event_service(db, event_id, organizer_id)
+    promotions = promotion_service.get_promotions_by_event(db, event_id)
+    if not promotions:
+        raise HTTPException(status_code=404, detail="No se encontraron promociones para este evento.")
+    return promotions
+
 
 # -----------------------------------------------------------
-# 📌 Obtener todas las promociones (sin filtrar por evento)
-# -----------------------------------------------------------
-@router.get("/", response_model=List[PromotionResponse])
-def get_all_promotions(
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Listar todas las promociones disponibles (según permisos).
-    """
-    organizer_id = current_user["id"]
-    return promotion_service.get_all_promotions_service(db, organizer_id)
-
-# -----------------------------------------------------------
-# 📌 Actualizar promoción
+# 📌 Actualizar una promoción
 # -----------------------------------------------------------
 @router.put("/{promo_id}", response_model=PromotionResponse)
 def update_promotion(
@@ -70,14 +89,16 @@ def update_promotion(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Actualizar los detalles de una promoción existente.
+    Actualizar una promoción existente.
     """
-    organizer_id = current_user["id"]
-    return promotion_service.update_promotion_service(db, promo_id, update_data, organizer_id)
+    updated = promotion_service.update_promotion(db, promo_id, update_data)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Promoción no encontrada.")
+    return updated
 
 
 # -----------------------------------------------------------
-# 📌 Eliminar promoción
+# 📌 Eliminar una promoción
 # -----------------------------------------------------------
 @router.delete("/{promo_id}", status_code=status.HTTP_200_OK)
 def delete_promotion(
@@ -86,7 +107,9 @@ def delete_promotion(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Eliminar una promoción (solo el organizador del evento).
+    Eliminar una promoción existente.
     """
-    organizer_id = current_user["id"]
-    return promotion_service.delete_promotion_service(db, promo_id, organizer_id)
+    success = promotion_service.delete_promotion(db, promo_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Promoción no encontrada.")
+    return {"message": "Promoción eliminada correctamente."}
