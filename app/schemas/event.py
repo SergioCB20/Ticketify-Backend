@@ -1,11 +1,9 @@
-# app/schemas/event.py
-
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional
 import uuid
 
-# Este schema define la estructura de CADA evento que el frontend recibirá
+# Define cómo se verá el JSON que enviamos al frontend
 class OrganizerEventResponse(BaseModel):
     id: uuid.UUID
     title: str
@@ -16,6 +14,5 @@ class OrganizerEventResponse(BaseModel):
     status: str
     imageUrl: Optional[str] = None
 
-    # Esto le dice a Pydantic que puede leer datos
-    # directamente desde un modelo de SQLAlchemy (como la clase Event)
+    # Permite que Pydantic lea los datos desde un modelo de SQLAlchemy
     model_config = ConfigDict(from_attributes=True)
