@@ -33,6 +33,9 @@ class UserRepository:
         # Hash password
         hashed_password = get_password_hash(user_data.password)
         
+        # Import enums from models
+        from app.models.user import DocumentType, Gender
+        
         # Create user instance
         db_user = User(
             email=user_data.email.lower(),
@@ -40,7 +43,11 @@ class UserRepository:
             firstName=user_data.firstName.strip(),
             lastName=user_data.lastName.strip(),
             phoneNumber=user_data.phoneNumber,
+            documentType=DocumentType(user_data.documentType.value),
             documentId=user_data.documentId,
+            country=user_data.country,
+            city=user_data.city,
+            gender=Gender(user_data.gender.value),
             isActive=True
         )
         
@@ -74,8 +81,23 @@ class UserRepository:
         if not user:
             return None
         
-        # Update only provided fields
+        # Get update data
         update_data = user_data.dict(exclude_unset=True)
+        
+        # If email is being updated, check it's not taken by another user
+        if 'email' in update_data and update_data['email']:
+            new_email = update_data['email'].lower()
+            # Check if another user has this email
+            existing_user = self.get_by_email(new_email)
+            if existing_user and existing_user.id != user_id:
+                from fastapi import HTTPException, status
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El correo electrónico ya está registrado por otro usuario"
+                )
+            update_data['email'] = new_email
+        
+        # Update only provided fields
         for field, value in update_data.items():
             if hasattr(user, field) and value is not None:
                 setattr(user, field, value)

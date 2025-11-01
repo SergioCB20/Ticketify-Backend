@@ -87,11 +87,14 @@ class UserLogin(BaseModel):
     password: str = Field(..., min_length=1)
 
 class UserUpdate(BaseModel):
+    email: Optional[EmailStr] = None
     firstName: Optional[str] = Field(None, min_length=2, max_length=100)
     lastName: Optional[str] = Field(None, min_length=2, max_length=100)
     phoneNumber: Optional[str] = Field(None, max_length=20)
-    profilePhoto: Optional[str] = None
+    country: Optional[str] = Field(None, max_length=100)
     city: Optional[str] = Field(None, max_length=100)
+    gender: Optional[GenderEnum] = None
+    profilePhoto: Optional[str] = None
     
     class Config:
         populate_by_name = True
