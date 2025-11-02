@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 from uuid import UUID
+from pydantic import BaseModel, Field, condecimal
 from .event import EventSimpleResponse
 from .user import UserSimpleResponse
 
@@ -53,4 +54,12 @@ class PaginatedMarketplaceListings(BaseModel):
 
     class Config:
         # Esta se queda SIN 'from_attributes = True'
+        populate_by_name = True
+
+class MarketplaceListingCreate(BaseModel):
+    ticketId: UUID = Field(..., alias="ticketId")
+    price: condecimal(gt=0, decimal_places=2)
+    description: Optional[str] = Field(None, max_length=500)
+    
+    class Config:
         populate_by_name = True
