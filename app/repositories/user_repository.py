@@ -55,7 +55,7 @@ class UserRepository:
         self.db.flush()  # Flush to get the user ID
         
         # Assign role based on userType
-        role_name = "Attendee" if user_data.userType.value == "ATTENDEE" else "Organizer"
+        role_name = user_data.userType.value
         role = self.db.query(Role).filter(Role.name == role_name).first()
         
         if role:

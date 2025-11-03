@@ -4,16 +4,16 @@ from sqlalchemy import select, func, or_
 from typing import List, Optional
 import math
 from uuid import UUID
-from datetime import timedelta, datetime # <-- IMPORTADO
+from datetime import timedelta, datetime 
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_active_user # <-- ¡¡IMPORTADO!!
+from app.core.dependencies import get_current_active_user 
 from app.models.user import User
 from app.models.marketplace_listing import MarketplaceListing, ListingStatus
 from app.models.event import Event
 from app.models.ticket import Ticket, TicketStatus
-from app.models.payment import Payment, PaymentMethod, PaymentStatus # <-- IMPORTADO
-from app.services.marketplace_service import MarketplaceService # <-- IMPORTADO
+from app.models.payment import Payment, PaymentMethod, PaymentStatus 
+from app.services.marketplace_service import MarketplaceService 
 import uuid
 # (Asumo que tus schemas están en sus propios archivos como planeamos)
 from app.schemas.marketplace import (
@@ -94,32 +94,29 @@ async def create_listing(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user) # <-- ¡¡AHORA FUNCIONARÁ!!
 ):
-    """
-    Pone un ticket a la venta en el marketplace.
-    """
-    
-    # 2. VALIDACIÓN: Buscar el ticket que el usuario quiere vender
+
+    # 1. VALIDACIÓN: Buscar el ticket que el usuario quiere vender
     ticket_to_sell = db.query(Ticket).filter(
         Ticket.id == listing_data.ticketId
     ).options(
         joinedload(Ticket.event) # Cargar el evento para obtener título y fecha
     ).first()
 
-    # 3. VALIDACIÓN: ¿Existe el ticket?
+    # 2. VALIDACIÓN: ¿Existe el ticket?
     if not ticket_to_sell:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="El ticket que intentas vender no existe."
         )
 
-    # 4. VALIDACIÓN: ¿El ticket le pertenece al usuario?
+    # 3. VALIDACIÓN: ¿El ticket le pertenece al usuario?
     if ticket_to_sell.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No puedes vender un ticket que no te pertenece."
         )
 
-    # 5. VALIDACIÓN: ¿El ticket está ACTIVO?
+    # 4. VALIDACIÓN: ¿El ticket está ACTIVO?
     if ticket_to_sell.status != TicketStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -153,6 +150,9 @@ async def create_listing(
     )
     
     db.add(new_listing)
+    ticket_to_sell.status = TicketStatus.TRANSFERRED
+    db.add(ticket_to_sell)
+    
     db.commit()
     db.refresh(new_listing)
     
@@ -175,7 +175,7 @@ async def buy_listing(
         MarketplaceListing.id == listing_id,
         MarketplaceListing.status == ListingStatus.ACTIVE
     ).options(
-        joinedload(Listing.ticket) # Cargar el ticket original
+        joinedload(MarketplaceListing.ticket).joinedload(Ticket.event)# Cargar el ticket original
     ).first()
 
     if not listing:

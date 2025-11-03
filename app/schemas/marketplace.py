@@ -2,10 +2,9 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel, Field, condecimal
 from .event import EventSimpleResponse
 from .user import UserSimpleResponse
-
+from pydantic import BaseModel, Field, condecimal
 class MarketplaceListingResponse(BaseModel):
     id: UUID
     title: str
