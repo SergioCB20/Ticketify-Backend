@@ -1,6 +1,7 @@
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
+from pydantic import ValidationError
 from datetime import datetime
 import uuid
 
@@ -9,6 +10,7 @@ from app.schemas.event import (
     EventCreate, 
     EventUpdate, 
     EventResponse, 
+    OrganizerEventResponse,
     EventSearchResponse
 )
 from app.models.event import Event, EventStatus
@@ -32,7 +34,8 @@ class EventService:
                 detail="Evento no encontrado"
             )
         
-        event_dict = self.event_repo.enrich_event_data(event)
+        # Convert SQLAlchemy model to serializable dict using model helper
+        event_dict = event.to_dict() if hasattr(event, 'to_dict') else {}
         return EventResponse(**event_dict)
     
     def get_all_events(
@@ -56,12 +59,19 @@ class EventService:
         
         events = self.event_repo.get_all(skip=skip, limit=limit, status=event_status)
         
-        # Enrich all events with additional data
-        event_responses = []
-        for event in events:
-            event_dict = self.event_repo.enrich_event_data(event)
-            event_responses.append(EventResponse(**event_dict))
-        
+        # Enrich all events with additional data and validate via EventResponse
+        try:
+            event_responses = [
+                EventResponse(**(event.to_dict() if hasattr(event, 'to_dict') else {}))
+                for event in events
+            ]
+        except ValidationError as e:
+            # Raise HTTP 500 with validation details for easier debugging
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al validar datos del evento: {e}"
+            )
+
         return event_responses
     
     def search_events(
@@ -140,7 +150,7 @@ class EventService:
                 )
         
         # Search events
-        events, total_count = self.event_repo.search(
+        events, total_count = self.event_repo.get_events(
             query=query,
             category_ids=category_ids,
             min_price=min_price,
@@ -157,7 +167,7 @@ class EventService:
         # Enrich events with additional data
         event_responses = []
         for event in events:
-            event_dict = self.event_repo.enrich_event_data(event)
+            event_dict = event.to_dict() if hasattr(event, 'to_dict') else {}
             event_responses.append(event_dict)
         
         # Calculate total pages
@@ -200,9 +210,9 @@ class EventService:
             )
         
         # Create event
-        event = self.event_repo.create(event_data, organizer_id)
-        
-        event_dict = self.event_repo.enrich_event_data(event)
+        event = self.event_repo.create_event(event_data, organizer_id)
+
+        event_dict = event.to_dict() if hasattr(event, 'to_dict') else {}
         return EventResponse(**event_dict)
     
     def update_event(
@@ -249,15 +259,15 @@ class EventService:
                 )
         
         # Update event
-        updated_event = self.event_repo.update(event_id, event_data)
-        
+        updated_event = self.event_repo.update_event(event_id, event_data)
+
         if not updated_event:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al actualizar el evento"
             )
         
-        event_dict = self.event_repo.enrich_event_data(updated_event)
+        event_dict = updated_event.to_dict() if hasattr(updated_event, 'to_dict') else {}
         return EventResponse(**event_dict)
     
     def delete_event(self, event_id: str, user_id: uuid.UUID) -> Dict[str, str]:
@@ -321,15 +331,15 @@ class EventService:
             )
         
         # Publish event
-        published_event = self.event_repo.publish(event_id)
-        
+        published_event = self.event_repo.publish_event(event_id)
+
         if not published_event:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al publicar el evento"
             )
         
-        event_dict = self.event_repo.enrich_event_data(published_event)
+        event_dict = published_event.to_dict() if hasattr(published_event, 'to_dict') else {}
         return EventResponse(**event_dict)
     
     def cancel_event(self, event_id: str, user_id: uuid.UUID) -> EventResponse:
@@ -350,15 +360,15 @@ class EventService:
             )
         
         # Cancel event
-        cancelled_event = self.event_repo.cancel(event_id)
-        
+        cancelled_event = self.event_repo.cancel_event(event_id)
+
         if not cancelled_event:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Error al cancelar el evento"
             )
         
-        event_dict = self.event_repo.enrich_event_data(cancelled_event)
+        event_dict = cancelled_event.to_dict() if hasattr(cancelled_event, 'to_dict') else {}
         return EventResponse(**event_dict)
 
     def set_draft_event(self, event_id: str, user_id: uuid.UUID) -> EventResponse:
@@ -387,7 +397,7 @@ class EventService:
                 detail="Error al poner el evento en DRAFT"
             )
 
-        event_dict = self.event_repo.enrich_event_data(drafted_event)
+        event_dict = drafted_event.to_dict() if hasattr(drafted_event, 'to_dict') else {}
         return EventResponse(**event_dict)
 
     def complete_event(self, event_id: str, user_id: uuid.UUID) -> EventResponse:
@@ -417,34 +427,62 @@ class EventService:
                 detail="Error al marcar el evento como COMPLETED"
             )
 
-        event_dict = self.event_repo.enrich_event_data(completed_event)
+        event_dict = completed_event.to_dict() if hasattr(completed_event, 'to_dict') else {}
         return EventResponse(**event_dict)
     
     def get_featured_events(self, limit: int = 6) -> List[EventResponse]:
         """Get featured events (upcoming published events)"""
-        events = self.event_repo.get_featured(limit=limit)
-        
-        # Enrich all events
-        event_responses = []
-        for event in events:
-            event_dict = self.event_repo.enrich_event_data(event)
-            event_responses.append(EventResponse(**event_dict))
-        
+        events = self.event_repo.get_featured_events(limit=limit)
+        # Enrich all events and validate
+        try:
+            event_responses = [
+                EventResponse(**(event.to_dict() if hasattr(event, 'to_dict') else {}))
+                for event in events
+            ]
+        except ValidationError as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al validar datos del evento destacado: {e}"
+            )
+
         return event_responses
     
     def get_organizer_events(
-        self, 
-        organizer_id: uuid.UUID, 
-        skip: int = 0, 
-        limit: int = 20
-    ) -> List[EventResponse]:
-        """Get events by organizer"""
-        events = self.event_repo.get_by_organizer(organizer_id, skip, limit)
-        
-        # Enrich all events
-        event_responses = []
-        for event in events:
-            event_dict = self.event_repo.enrich_event_data(event)
-            event_responses.append(EventResponse(**event_dict))
-        
-        return event_responses
+        self,
+        organizer_id: uuid.UUID,
+    ) -> List[OrganizerEventResponse]:
+        """Get events by organizer and return simplified organizer view."""
+        events = self.event_repo.get_events_by_organizer_id(organizer_id)
+
+        try:
+            organizer_events: List[OrganizerEventResponse] = []
+            for event in events:
+                total_capacity = getattr(event, "totalCapacity", None)
+                available = getattr(event, "available_tickets", None)
+                sold = None
+                if total_capacity is not None and available is not None:
+                    try:
+                        sold = int(total_capacity) - int(available)
+                    except Exception:
+                        sold = None
+
+                ev = {
+                    "id": event.id,
+                    "title": event.title,
+                    "date": getattr(event, "startDate", None),
+                    "location": getattr(event, "venue", None),
+                    "totalTickets": total_capacity,
+                    "soldTickets": sold,
+                    "status": event.status.value if hasattr(event.status, "value") else event.status,
+                    "imageUrl": (event.multimedia[0] if getattr(event, "multimedia", None) and len(event.multimedia) > 0 else None)
+                }
+
+                organizer_events.append(OrganizerEventResponse(**ev))
+        except ValidationError as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al validar datos de eventos del organizador: {e}"
+            )
+
+        return organizer_events
+    

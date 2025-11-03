@@ -83,7 +83,8 @@ class User(Base):
     audit_logs = relationship("AuditLog", back_populates="user")
     ticket_transfers_from = relationship("TicketTransfer", foreign_keys="TicketTransfer.from_user_id", back_populates="from_user")
     ticket_transfers_to = relationship("TicketTransfer", foreign_keys="TicketTransfer.to_user_id", back_populates="to_user")
-    
+    created_promotions = relationship("Promotion", back_populates="created_by")
+    purchases = relationship("Purchase", back_populates="user")
     def __repr__(self):
         return f"<User(email='{self.email}')>"
     

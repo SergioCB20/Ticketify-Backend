@@ -55,6 +55,8 @@ class Event(Base):
     notifications = relationship("Notification", back_populates="event")
     schedules = relationship("EventSchedule", back_populates="event", cascade="all, delete-orphan")
     analytics = relationship("Analytics", back_populates="event", uselist=False)
+    purchases = relationship("Purchase", back_populates="event")
+    promotions = relationship("Promotion", back_populates="event")
     
     def __repr__(self):
         return f"<Event(title='{self.title}', status='{self.status}')>"
@@ -92,6 +94,20 @@ class Event(Base):
         """Check if event is sold out"""
         return self.available_tickets <= 0
     
+    @property
+    def min_price(self):
+        """Get minimum ticket price"""
+        if not self.ticket_types:
+            return None
+        return min(tt.price for tt in self.ticket_types)
+    
+    @property
+    def max_price(self):
+        """Get maximum ticket price"""
+        if not self.ticket_types:
+            return None
+        return max(tt.price for tt in self.ticket_types)
+    
     def to_dict(self):
         return {
             "id": str(self.id),
@@ -105,6 +121,8 @@ class Event(Base):
             "multimedia": self.multimedia if self.multimedia else [],
             "availableTickets": self.available_tickets,
             "isSoldOut": self.is_sold_out,
+            "minPrice": self.min_price,
+            "maxPrice": self.max_price,
             "organizerId": str(self.organizer_id),
             "categoryId": str(self.category_id) if self.category_id else None,
             "createdAt": self.createdAt.isoformat() if self.createdAt else None,
