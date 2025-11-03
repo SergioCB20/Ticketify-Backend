@@ -6,11 +6,58 @@ from app.models.marketplace_listing import MarketplaceListing, ListingStatus
 from app.models.ticket import Ticket, TicketStatus
 from app.models.ticket_transfer import TicketTransfer
 from app.models.user import User
+from fastapi import HTTPException, status
+
 
 class MarketplaceService:
 
     def __init__(self, db: Session):
         self.db = db
+
+    def buy_ticket(self, db: Session, listing_id: UUID, buyer: User) -> MarketplaceListing:
+        """
+        Lógica para comprar un ticket del marketplace.
+        """
+        # 1. Encontrar el listado
+        listing = db.query(MarketplaceListing).filter(MarketplaceListing.id == listing_id).first()
+        if not listing:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Listing not found")
+
+        # 2. Verificar que el listado esté disponible
+        if listing.status != ListingStatus.ACTIVE:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ticket is not available for purchase")
+
+        # 3. Encontrar el ticket asociado
+        ticket = db.query(Ticket).filter(Ticket.id == listing.ticket_id).first()
+        if not ticket:
+            # Esto es un error de integridad de datos, pero lo manejamos
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Associated ticket not found")
+
+        # 4. Verificar que el comprador no sea el mismo vendedor
+        if ticket.owner_id == buyer.id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot buy your own ticket")
+
+        # 5. Procesar la "compra" (Transferir propiedad y actualizar listado)
+        try:
+            # a. Transferir la propiedad del ticket
+            ticket.owner_id = buyer.id
+            
+            # b. Marcar el listado como "vendido"
+            listing.status = "sold"
+
+            # (Aquí iría la lógica de pago, creación de transacción, etc.)
+            
+            db.add(ticket)
+            db.add(listing)
+            db.commit()
+            db.refresh(listing)
+            
+            return listing
+        
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"An error occurred during the purchase: {str(e)}")
+
 
     def transfer_ticket_on_purchase(
         self,

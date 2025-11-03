@@ -1,9 +1,9 @@
 from typing import Optional, List
-from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from datetime import datetime
 import uuid
 
+from sqlalchemy.orm import Session, joinedload
 from app.models.user import User
 from app.models.role import Role
 from app.schemas.auth import UserRegister, UserUpdate
@@ -27,6 +27,12 @@ class UserRepository:
     def get_by_document_id(self, document_id: str) -> Optional[User]:
         """Get user by document ID"""
         return self.db.query(User).filter(User.documentId == document_id).first()
+
+    def get_by_id_with_role(self, user_id: uuid.UUID) -> Optional[User]:
+        """Get user by ID, and eagerly load the user's role relationship"""
+        return self.db.query(User).options(joinedload(User.roles)).filter(User.id == user_id).first()
+
+
     
     def create_user(self, user_data: UserRegister) -> User:
         """Create a new user"""

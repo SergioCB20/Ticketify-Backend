@@ -216,3 +216,57 @@ async def buy_listing(
     except Exception as e:
         # El servicio ya hizo rollback, solo informamos del error
         raise HTTPException(status_code=500, detail=f"Error en la transferencia: {e}")
+
+
+
+
+   # --- ENDPOINT POST (Para comprar un ticket - Lógica simple) ---
+# Pega este bloque al final de tu archivo "marketplace.py"
+
+@router.post(
+    "/{listing_id}/buy", 
+    response_model=MarketplaceListingResponse,  # Usamos el Schema que ya tienes
+    summary="Buy a ticket from the marketplace (Simple)"
+)
+def buy_marketplace_ticket_simple(
+    listing_id: UUID,  # <-- CORREGIDO: Espera un UUID
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user) # <-- CORREGIDO: Usa tu dependencia
+):
+    """
+    Compra un ticket listado en el marketplace (lógica simple).
+    
+    - **listing_id**: ID (UUID) del listado del marketplace a comprar.
+    """
+    
+    # Verificamos el rol (Asumiendo que User tiene .role.name)
+    if not current_user.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User has no roles assigned"
+        )
+
+    # Creamos una lista de los nombres de los roles del usuario
+    role_names = [role.name.lower() for role in current_user.roles]
+
+    # Comprobamos si "attendee" está en esa lista
+    if "ATTENDEE" not in role_names:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only attendees can purchase marketplace tickets"
+        )
+        try:
+            service = MarketplaceService(db) 
+            
+            updated_listing = service.buy_ticket(
+                db=db,
+                listing_id=listing_id,  # Ahora pasamos el UUID
+                buyer=current_user
+            )
+            return updated_listing
+        except HTTPException as e:
+            # Re-lanza las excepciones HTTP creadas en el servicio
+            raise e
+        except Exception as e:
+            # Captura cualquier otro error
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
