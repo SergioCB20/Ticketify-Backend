@@ -8,6 +8,7 @@ from datetime import timedelta, datetime
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_active_user 
+from app.core.dependencies import get_current_active_user, get_attendee_user
 from app.models.user import User
 from app.models.marketplace_listing import MarketplaceListing, ListingStatus
 from app.models.event import Event
@@ -164,7 +165,7 @@ async def create_listing(
 async def buy_listing(
     listing_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user) # <-- ¡¡AHORA FUNCIONARÁ!!
+    current_user: User = Depends(get_attendee_user)
 ):
     """
     Inicia el proceso de compra de un ticket en reventa.
@@ -216,9 +217,6 @@ async def buy_listing(
     except Exception as e:
         # El servicio ya hizo rollback, solo informamos del error
         raise HTTPException(status_code=500, detail=f"Error en la transferencia: {e}")
-
-
-
 
    # --- ENDPOINT POST (Para comprar un ticket - Lógica simple) ---
 # Pega este bloque al final de tu archivo "marketplace.py"
