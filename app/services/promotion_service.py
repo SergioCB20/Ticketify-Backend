@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models.promotion import Promotion, PromotionStatus, PromotionType
 from app.models.event import Event
-from app.repositories import promotion_repository
+from app.repositories.promotion_repository import PromotionRepository
 
 
 # =========================================================
@@ -14,12 +14,12 @@ from app.repositories import promotion_repository
 # =========================================================
 class PromotionService:
 
-    # =========================================================
-    # 🔹 Crear promoción
-    # =========================================================
-    @staticmethod
+    def __init__(self, db: Session):
+        self.db = db
+        self.promotion_repo = PromotionRepository(db)
+
     def create(
-        db: Session,
+        self,
         name: str,
         code: str,
         promotion_type: PromotionType,
@@ -40,45 +40,7 @@ class PromotionService:
         """
         Crear una nueva promoción asociada a un evento.
         """
-
-        # 1️⃣ Validar fechas coherentes
-        if end_date <= start_date:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="La fecha de fin debe ser posterior a la fecha de inicio."
-            )
-
-        # 2️⃣ Validar código único
-        existing_code = db.query(Promotion).filter(Promotion.code == code).first()
-        if existing_code:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El código de promoción ya existe."
-            )
-
-        # 3️⃣ Verificar que el evento exista
-        event = db.query(Event).filter(Event.id == event_id).first()
-        if not event:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="El evento asociado no existe."
-            )
-
-        # 4️⃣ Validar solapamiento de promociones activas dentro del mismo evento
-        overlapping_promo = db.query(Promotion).filter(
-            Promotion.event_id == event_id,
-            Promotion.start_date <= end_date,
-            Promotion.end_date >= start_date,
-            Promotion.status == PromotionStatus.ACTIVE
-        ).first()
-
-        if overlapping_promo:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"El evento ya tiene otra promoción activa ('{overlapping_promo.code}') en ese rango de fechas."
-            )
-
-        # 5️⃣ Crear la promoción
+        # 5️⃣ Crear la promoción (construcción de entidad)
         new_promo = Promotion(
             name=name,
             description=description,
@@ -97,11 +59,8 @@ class PromotionService:
             created_by_id=created_by_id,
             event_id=event_id,
         )
-
-        db.add(new_promo)
-        db.commit()
-        db.refresh(new_promo)
-        return new_promo
+        created = self.promotion_repo.create(new_promo)
+        return created
 
     # =========================================================
     # 🔹 Obtener promociones activas globales
@@ -135,15 +94,11 @@ class PromotionService:
             )
         return promo
 
-    # =========================================================
-    # 🔹 Obtener por evento
-    # =========================================================
-    @staticmethod
-    def get_by_event(db: Session, event_id: UUID) -> List[Promotion]:
+    def get_by_event(self, event_id: UUID) -> List[Promotion]:
         """
         Retorna todas las promociones asociadas a un evento específico.
         """
-        promotions = promotion_repository.get_promotions_by_event(db, event_id)
+        promotions = self.promotion_repo.get_promotions_by_event(event_id)
         return promotions or []
 
     # =========================================================

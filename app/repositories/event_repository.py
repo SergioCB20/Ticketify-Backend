@@ -39,7 +39,8 @@ class EventRepository:
             self.db.query(Event)
             .options(
                 joinedload(Event.organizer),
-                joinedload(Event.category)
+                joinedload(Event.category),
+                joinedload(Event.ticket_types)  # Cargar ticket_types para calcular precios
             )
             .filter(Event.id == event_id)
             .first()
@@ -75,6 +76,47 @@ class EventRepository:
         self.db.delete(event)
         self.db.commit()
         return True
+    
+    def get_all(
+        self,
+        skip: int = 0,
+        limit: int = 20,
+        status: Optional[EventStatus] = None
+    ) -> List[Event]:
+        """
+        Retrieve events with pagination and optional status filter.
+
+        Parameters:
+            skip (int): number of records to skip (offset)
+            limit (int): maximum number of records to return
+            status (Optional[EventStatus]): filter by event status; if None, defaults to PUBLISHED
+
+        Returns:
+            List[Event]: A list of events matching the criteria
+        """
+        query = (
+            self.db.query(Event)
+            .options(
+                joinedload(Event.organizer),
+                joinedload(Event.category),
+                joinedload(Event.ticket_types)  # Cargar ticket_types para calcular precios
+            )
+        )
+
+        if status:
+            query = query.filter(Event.status == status)
+        else:
+            query = query.filter(Event.status == EventStatus.PUBLISHED)
+
+        events = (
+            query
+            .order_by(Event.startDate.asc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+
+        return events
 
     def get_events(
         self,
@@ -128,10 +170,11 @@ class EventRepository:
             end_datetime = end_date.replace(hour=23, minute=59, second=59)
             query_filters.append(Event.endDate <= end_datetime)
         
-        # Construir la consulta base con joinedload (de vSergio)
+        # Construir la consulta base con joinedload para cargar relaciones
         events_query = self.db.query(Event).options(
             joinedload(Event.organizer),
-            joinedload(Event.category)
+            joinedload(Event.category),
+            joinedload(Event.ticket_types)  # Cargar ticket_types para calcular precios
         )
 
         if query_filters:
@@ -179,7 +222,8 @@ class EventRepository:
             self.db.query(Event)
             .options(
                 joinedload(Event.organizer),
-                joinedload(Event.category)
+                joinedload(Event.category),
+                joinedload(Event.ticket_types)  # Cargar ticket_types para calcular precios
             )
             .filter(Event.organizer_id == organizer_id)
         )
@@ -261,7 +305,8 @@ class EventRepository:
             self.db.query(Event)
             .options(
                 joinedload(Event.organizer),
-                joinedload(Event.category)
+                joinedload(Event.category),
+                joinedload(Event.ticket_types)  # Cargar ticket_types para calcular precios
             )
             .filter(
                 Event.status == EventStatus.PUBLISHED,
