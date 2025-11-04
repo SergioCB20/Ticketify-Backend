@@ -3,12 +3,17 @@ from sqlalchemy.orm import Session
 from typing import List
 from uuid import UUID
 
-from app.schemas.promotion_schema import PromotionResponse, PromotionCreate, PromotionUpdate
+from app.schemas.promotion import PromotionResponse, PromotionCreate, PromotionUpdate
 from app.services.promotion_service import PromotionService
-from app.utils.security import get_current_user
+from app.core.dependencies import get_current_user
 from app.core.database import get_db
 
 router = APIRouter(prefix="/promotions", tags=["Promotions"])
+
+def get_event_service(db: Session = Depends(get_db)) -> PromotionService:
+    """Dependencia para inyectar la capa de servicio de eventos"""
+    return PromotionService(db)
+
 
 
 # =========================================================
@@ -50,7 +55,7 @@ def get_promotion_by_id(
 @router.post("/", response_model=PromotionResponse, status_code=status.HTTP_201_CREATED)
 def create_promotion(
     payload: PromotionCreate,
-    db: Session = Depends(get_db),
+    promotion_service: PromotionService = Depends(get_event_service),
     current_user=Depends(get_current_user)
 ):
     """
@@ -60,8 +65,7 @@ def create_promotion(
         print("📦 Payload recibido en FastAPI:", payload)
         print("📦 Payload dict():", payload.dict())  # 👈 añade esta línea
         
-        promotion = PromotionService.create(
-            db,
+        promotion = promotion_service.create(
             name=payload.name,
             description=payload.description,
             code=payload.code,
@@ -76,7 +80,7 @@ def create_promotion(
             applies_to_all_events=payload.applies_to_all_events,
             applies_to_new_users_only=payload.applies_to_new_users_only,
             is_public=payload.is_public,
-            created_by_id=current_user["id"],   # 🔥 lo tomamos del usuario autenticado
+            created_by_id=payload.created_by_id,
             event_id=payload.event_id
         )
         return promotion
@@ -141,5 +145,25 @@ def delete_promotion(
         return {"detail": "Promoción eliminada correctamente"}
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =========================================================
+# 🔹 Obtener promociones por evento
+# =========================================================
+@router.get("/events/{event_id}", response_model=List[PromotionResponse])
+def get_promotions_by_event(
+    event_id: UUID,
+    promotion_service: PromotionService = Depends(get_event_service),
+    current_user=Depends(get_current_user)
+):
+    """
+    Retorna las promociones asociadas a un evento específico.
+    Simplemente delega en PromotionService.get_by_event y devuelve lo que ese método retorne.
+    """
+    try:
+        promotions = promotion_service.get_by_event(event_id)
+        return promotions
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

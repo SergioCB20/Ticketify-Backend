@@ -2,14 +2,16 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import select, func
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 
-# Dependencias principales
 from app.core.dependencies import get_db, get_current_user
 from app.services.event_service import EventService  # Usando la capa de servicio
 from app.models.user import User
+from app.models.event import EventStatus
+from app.models.ticket import Ticket
 from app.models.event import EventStatus
 
 # Esquemas de Pydantic
@@ -18,7 +20,9 @@ from app.schemas.event import (
     EventUpdate,
     EventResponse,
     EventListResponse,    # Esquema de lista con paginación
-    EventDetailResponse   # Esquema detallado para un solo evento
+    EventSearchResponse,  # Esquema de búsqueda con paginación
+    EventDetailResponse,  # Esquema detallado para un solo evento
+    OrganizerEventResponse  # Importar el esquema necesario
 )
 
 router = APIRouter(prefix="/events", tags=["events"])
@@ -31,19 +35,19 @@ def get_event_service(db: Session = Depends(get_db)) -> EventService:
 
 # --- Endpoints ---
 
-@router.get("/", response_model=EventListResponse)
+
+
+@router.get("/search", response_model=EventSearchResponse)
 async def search_and_list_events(
     query: Optional[str] = Query(None, description="Búsqueda por título o descripción"),
     categories: Optional[str] = Query(None, description="Slugs de categorías separadas por comas"),
     min_price: Optional[float] = Query(None, ge=0, description="Precio mínimo"),
     max_price: Optional[float] = Query(None, ge=0, description="Precio máximo"),
-    start_date: Optional[datetime] = Query(None, description="Fecha de inicio (YYYY-MM-DD)"),
-    end_date: Optional[datetime] = Query(None, description="Fecha de fin (YYYY-MM-DD)"),
+    start_date: Optional[str] = Query(None, description="Fecha de inicio (YYYY-MM-DD o YYYY-MM-DDTHH:MM:SS)"),
+    end_date: Optional[str] = Query(None, description="Fecha de fin (YYYY-MM-DD o YYYY-MM-DDTHH:MM:SS)"),
     location: Optional[str] = Query(None, description="Ubicación geográfica (ciudad, región)"),
     venue: Optional[str] = Query(None, description="Nombre del local o recinto específico"),
     status: Optional[EventStatus] = Query(None, description="Estado del evento (DRAFT, PUBLISHED, etc.)"),
-    
-    organizer_id: Optional[UUID] = Query(None, description="Filtrar por ID de organizador"),
     
     # Paginación (de ambos)
     page: int = Query(1, ge=1, description="Número de página"),
@@ -66,10 +70,21 @@ async def search_and_list_events(
         location=location,
         venue=venue,
         status_filter=status,
-        organizer_id=organizer_id,
         page=page,
         page_size=page_size
     )
+
+@router.get("/", response_model=List[EventResponse])
+def get_events(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None),
+    event_service: EventService = Depends(get_event_service)
+):
+    """
+    Obtener todos los eventos publicados con paginación simple
+    """
+    return event_service.get_all_events(skip=skip, limit=limit, status_filter=status)
 
 
 @router.get("/featured", response_model=List[EventResponse])
@@ -190,35 +205,9 @@ async def complete_event(
     """
     return event_service.complete_event(event_id, current_user.id)
 
-def get_organizer_events(self, organizer_id: uuid.UUID) -> list[OrganizerEventResponse]:
-        # 1. Pide los eventos a la BD
-        db_events = self.event_repo.get_events_by_organizer_id(organizer_id)
-        
-        response_events = []
-        for event in db_events:
-            # 2. Lógica de negocio (Calcular tickets vendidos)
-            stmt = select(func.count(Ticket.id)).where(
-                Ticket.event_id == event.id,
-                Ticket.status.notin_(['CANCELLED'])
-            )
-            sold_tickets_count = self.db.execute(stmt).scalar_one()
-
-            # 3. Lógica de negocio (Obtener imagen principal)
-            main_image_url = event.multimedia[0] if event.multimedia else None
-
-            # 4. "Traduce" los nombres de la BD a los nombres del Frontend
-            response_event_data = {
-                "id": event.id,
-                "title": event.title,
-                "date": event.startDate,  # BD (start_date) -> Frontend (date)
-                "location": event.venue,   # BD (venue) -> Frontend (location)
-                "totalTickets": event.totalCapacity,
-                "soldTickets": sold_tickets_count,
-                "status": str(event.status.value),
-                "imageUrl": main_image_url
-            }
-
-            # 5. Valida y agrega a la lista final
-            response_events.append(OrganizerEventResponse.model_validate(response_event_data))
-        
-        return response_events
+@router.get("/organizer/{organizer_id}", response_model=List[OrganizerEventResponse])
+def get_organizer_events(
+    organizer_id: UUID,
+    event_service: EventService = Depends(get_event_service)
+    ) -> list[OrganizerEventResponse]:
+    return event_service.get_organizer_events(organizer_id)
