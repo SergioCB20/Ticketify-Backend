@@ -35,7 +35,7 @@ class Ticket(Base):
     event_id = Column(UUID(as_uuid=True), ForeignKey("events.id"), nullable=False)
     ticket_type_id = Column(UUID(as_uuid=True), ForeignKey("ticket_types.id"), nullable=False)
     payment_id = Column(UUID(as_uuid=True), ForeignKey("payments.id"), nullable=False)
-    purchase_id = Column(UUID(as_uuid=True), ForeignKey("purchases.id"), nullable=True)
+    purchase_id = Column(UUID(as_uuid=True), ForeignKey("purchases.id"), nullable=False)
     
     # Relationships
     user = relationship("User", foreign_keys=[user_id], back_populates="tickets")

@@ -96,7 +96,7 @@ class MarketplaceService:
             event_id=original_ticket.event_id,
             ticket_type_id=original_ticket.ticket_type_id,
             payment_id=payment_id, # El ID del NUEVO pago
-            
+            purchase_id=original_ticket.purchase_id,
             # Generar un nuevo QR es fundamental
             qrCode=f"qr_new_{uuid.uuid4()}" # Llama a tu función real de QR
         )
