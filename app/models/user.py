@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime, Enum, Table, ForeignKey
+from sqlalchemy import Column, String, Boolean, DateTime, Enum, Table, ForeignKey, LargeBinary
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -52,14 +52,15 @@ class User(Base):
     # Document information
     documentType = Column(Enum(DocumentType), nullable=True)  # DNI, CE, Pasaporte
     documentId = Column(String(50), nullable=True, unique=True, index=True)  # Número de documento
-    profilePhoto = Column(String(500), nullable=True)  # Renombrado de avatar
+    
     # Location
     country = Column(String(100), nullable=True)  # País
     city = Column(String(100), nullable=True)  # Ciudad
     
     # Personal
     gender = Column(Enum(Gender), nullable=True)  # Género
-    profilePhoto = Column(String(500), nullable=True)  # Renombrado de avatar
+    profilePhoto = Column(LargeBinary, nullable=True)  # Foto de perfil almacenada como BLOB
+    profilePhotoMimeType = Column(String(50), nullable=True)  # Tipo MIME (image/jpeg, image/png, etc.)
     # Status
     isActive = Column(Boolean, default=True, nullable=False)  # Renombrado de is_active
     
@@ -108,9 +109,18 @@ class User(Base):
             if hasattr(self, key):
                 setattr(self, key, value)
     
-    def upload_photo(self, photo_url: str):
-        """Upload profile photo"""
-        self.profilePhoto = photo_url
+    def upload_photo(self, photo_data: bytes, mime_type: str):
+        """Upload profile photo as binary data"""
+        self.profilePhoto = photo_data
+        self.profilePhotoMimeType = mime_type
+    
+    def get_profile_photo_base64(self) -> str | None:
+        """Get profile photo as base64 string for JSON response"""
+        if self.profilePhoto:
+            import base64
+            encoded = base64.b64encode(self.profilePhoto).decode('utf-8')
+            return f"data:{self.profilePhotoMimeType or 'image/jpeg'};base64,{encoded}"
+        return None
     
     def to_dict(self):
         return {
@@ -124,7 +134,7 @@ class User(Base):
             "country": self.country,
             "city": self.city,
             "gender": self.gender.value if self.gender else None,
-            "profilePhoto": self.profilePhoto,
+            "profilePhoto": self.get_profile_photo_base64(),
             "isActive": self.isActive,
             "createdAt": self.createdAt.isoformat() if self.createdAt else None,
             "lastLogin": self.lastLogin.isoformat() if self.lastLogin else None,

@@ -87,6 +87,9 @@ class UserLogin(BaseModel):
     password: str = Field(..., min_length=1)
 
 class UserUpdate(BaseModel):
+    """Schema para actualizar perfil de usuario.
+    profilePhoto acepta base64: 'data:image/jpeg;base64,/9j/4AAQ...'
+    """
     email: Optional[EmailStr] = None
     firstName: Optional[str] = Field(None, min_length=2, max_length=100)
     lastName: Optional[str] = Field(None, min_length=2, max_length=100)
@@ -94,10 +97,24 @@ class UserUpdate(BaseModel):
     country: Optional[str] = Field(None, max_length=100)
     city: Optional[str] = Field(None, max_length=100)
     gender: Optional[GenderEnum] = None
-    profilePhoto: Optional[str] = None
+    profilePhoto: Optional[str] = Field(
+        None,
+        description="Foto en base64: 'data:image/jpeg;base64,...' o null para eliminar"
+    )
     
     class Config:
         populate_by_name = True
+        json_schema_extra = {
+            "example": {
+                "firstName": "Juan",
+                "lastName": "Pérez",
+                "phoneNumber": "+51 999 999 999",
+                "country": "Perú",
+                "city": "Lima",
+                "gender": "masculino",
+                "profilePhoto": "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
+            }
+        }
 
 class ChangePassword(BaseModel):
     currentPassword: str = Field(..., min_length=1, alias="currentPassword")

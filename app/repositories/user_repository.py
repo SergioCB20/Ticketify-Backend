@@ -2,6 +2,8 @@ from typing import Optional, List
 from sqlalchemy import and_, or_
 from datetime import datetime
 import uuid
+import base64
+import re
 
 from sqlalchemy.orm import Session, joinedload
 from app.models.user import User
@@ -82,13 +84,50 @@ class UserRepository:
         return db_user
     
     def update_user(self, user_id: uuid.UUID, user_data: UserUpdate) -> Optional[User]:
-        """Update user information"""
+        """Update user information including profile photo in base64"""
         user = self.get_by_id(user_id)
         if not user:
             return None
         
         # Get update data
         update_data = user_data.dict(exclude_unset=True)
+        
+        # Manejar profilePhoto si viene en base64
+        if 'profilePhoto' in update_data:
+            profile_photo_base64 = update_data.pop('profilePhoto')
+            
+            if profile_photo_base64 is None:
+                # Eliminar foto
+                user.profilePhoto = None
+                user.profilePhotoMimeType = None
+            elif profile_photo_base64.startswith('data:image/'):
+                # Procesar base64
+                # Extraer MIME type y datos
+                match = re.match(r'data:(image/[\w+]+);base64,(.+)', profile_photo_base64)
+                if match:
+                    mime_type = match.group(1)
+                    base64_data = match.group(2)
+                    
+                    try:
+                        # Decodificar base64 a bytes
+                        photo_bytes = base64.b64decode(base64_data)
+                        
+                        # Validar tamaño (5MB máximo)
+                        if len(photo_bytes) > 5 * 1024 * 1024:
+                            from fastapi import HTTPException, status
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="La imagen es demasiado grande. Tamaño máximo: 5MB"
+                            )
+                        
+                        # Guardar en el modelo
+                        user.upload_photo(photo_bytes, mime_type)
+                    except ValueError as e:
+                        from fastapi import HTTPException, status
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Imagen base64 inválida: {str(e)}"
+                        )
         
         # If email is being updated, check it's not taken by another user
         if 'email' in update_data and update_data['email']:
@@ -136,6 +175,20 @@ class UserRepository:
         self.db.commit()
         
         return True
+    
+    def upload_profile_photo(self, user_id: uuid.UUID, photo_data: bytes, mime_type: str) -> Optional[User]:
+        """Upload profile photo as binary data"""
+        user = self.get_by_id(user_id)
+        if not user:
+            return None
+        
+        # Usar el método del modelo para guardar la foto
+        user.upload_photo(photo_data, mime_type)
+        
+        self.db.commit()
+        self.db.refresh(user)
+        
+        return user
     
     def set_reset_token(self, email: str, token: str, expires_at: datetime) -> bool:
         """Set password reset token for user"""
