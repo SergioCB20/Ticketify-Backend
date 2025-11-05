@@ -1,5 +1,6 @@
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone
 from fastapi import HTTPException, status
 from pydantic import ValidationError
 from datetime import datetime
@@ -73,6 +74,49 @@ class EventService:
             )
 
         return event_responses
+    def get_active_events(
+        self, 
+        skip: int = 0, 
+        limit: int = 20, 
+        status_filter: Optional[str] = None
+    ) -> List[EventResponse]:
+        """Get all future or active events with pagination"""
+        event_status = None
+        if status_filter:
+            try:
+                event_status = EventStatus[status_filter.upper()]
+            except KeyError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Estado inválido: {status_filter}"
+                )
+        else:
+            event_status = EventStatus.PUBLISHED
+
+        # Llamada al repositorio
+        events = self.event_repo.get_all(skip=skip, limit=limit, status=event_status)
+
+        # 🔥 FILTRO DE FECHA AQUÍ (solo eventos cuyo fin aún no pasó)
+        now = datetime.now(timezone.utc)
+        upcoming_events = [
+            e for e in events
+            if getattr(e, "endDate", None) and e.endDate > now
+        ]
+
+        # Enrich all events with additional data and validate via EventResponse
+        try:
+            event_responses = [
+                EventResponse(**(event.to_dict() if hasattr(event, 'to_dict') else {}))
+                for event in upcoming_events
+            ]
+        except ValidationError as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al validar datos del evento: {e}"
+            )
+
+        return event_responses
+    
     
     def search_events(
         self,

@@ -86,6 +86,18 @@ def get_events(
     """
     return event_service.get_all_events(skip=skip, limit=limit, status_filter=status)
 
+@router.get("/active", response_model=List[EventResponse])
+def get_active_events(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None),
+    event_service: EventService = Depends(get_event_service)
+):
+    """
+    Obtener todos los eventos activos con fecha despues de hoy
+    """
+    return event_service.get_active_events(skip=skip, limit=limit, status_filter=status)
+
 
 @router.get("/featured", response_model=List[EventResponse])
 async def get_featured_events(
