@@ -48,11 +48,11 @@ class User(Base):
     firstName = Column(String(100), nullable=False)  # Renombrado de first_name
     lastName = Column(String(100), nullable=False)  # Renombrado de last_name
     phoneNumber = Column(String(20), nullable=True)  # NUEVO
-    
+    documentId = Column(String(50), nullable=True)  # NUEVO
     # Document information
     documentType = Column(Enum(DocumentType), nullable=True)  # DNI, CE, Pasaporte
     documentId = Column(String(50), nullable=True, unique=True, index=True)  # Número de documento
-    
+    profilePhoto = Column(String(500), nullable=True)  # Renombrado de avatar
     # Location
     country = Column(String(100), nullable=True)  # País
     city = Column(String(100), nullable=True)  # Ciudad
@@ -60,7 +60,6 @@ class User(Base):
     # Personal
     gender = Column(Enum(Gender), nullable=True)  # Género
     profilePhoto = Column(String(500), nullable=True)  # Renombrado de avatar
-    
     # Status
     isActive = Column(Boolean, default=True, nullable=False)  # Renombrado de is_active
     
@@ -84,7 +83,8 @@ class User(Base):
     audit_logs = relationship("AuditLog", back_populates="user")
     ticket_transfers_from = relationship("TicketTransfer", foreign_keys="TicketTransfer.from_user_id", back_populates="from_user")
     ticket_transfers_to = relationship("TicketTransfer", foreign_keys="TicketTransfer.to_user_id", back_populates="to_user")
-    
+    created_promotions = relationship("Promotion", back_populates="created_by")
+    purchases = relationship("Purchase", back_populates="user")
     def __repr__(self):
         return f"<User(email='{self.email}')>"
     

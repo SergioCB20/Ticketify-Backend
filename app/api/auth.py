@@ -134,6 +134,7 @@ async def update_user_profile(
     
     Note: If you change your email, you'll need to verify it again.
     """
+
     from app.repositories.user_repository import UserRepository
     
     user_repo = UserRepository(db)
