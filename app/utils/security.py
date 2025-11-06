@@ -59,46 +59,54 @@ def create_refresh_token(data: dict) -> str:
     return encoded_jwt
 
 def verify_token(token: str, token_type: str = "access") -> dict:
-    """Verifica y decodifica un token JWT (Versión Corregida)"""
-    
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="No se pudieron validar las credenciales",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    
+    """Verify and decode JWT token"""
     try:
-        # jwt.decode maneja la expiración automáticamente.
-        # Si el token expira, saltará a 'except jwt.ExpiredSignatureError'.
-        payload = jwt.decode(
-            token, 
-            settings.SECRET_KEY, 
-            algorithms=[settings.ALGORITHM]
-        )
+        # Decode token
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         
-        token_scope: str = payload.get("type")
-
-        # Comprueba el tipo de token (access vs refresh)
-        if token_scope != token_type:
-            print(f"[DEBUG] Tipo de token incorrecto. Esperado: {token_type}, Recibido: {token_scope}")
+        # Debug logs
+        exp = payload.get("exp")
+        current_timestamp = int(datetime.utcnow().timestamp())
+        
+        print(f"[DEBUG] Token type: {payload.get('type')}")
+        print(f"[DEBUG] Token exp timestamp: {exp}")
+        print(f"[DEBUG] Current timestamp: {current_timestamp}")
+        print(f"[DEBUG] Time until expiry: {exp - current_timestamp} seconds")
+        
+        # Check token type
+        if payload.get("type") != token_type:
+            print(f"[DEBUG] Token type mismatch. Expected: {token_type}, Got: {payload.get('type')}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Tipo de token incorrecto"
+                detail="Token type mismatch"
             )
         
-        print(f"[DEBUG] Token validado para user: {payload.get('sub')}")
+        # Check expiration - jwt library already checks this, but we can add custom logic
+        if exp and current_timestamp > exp:
+            print(f"[DEBUG] Token has expired")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has expired"
+            )
+        
+        print(f"[DEBUG] Token validated successfully for user: {payload.get('sub')}")
         return payload
-
+    
     except jwt.ExpiredSignatureError:
-        print(f"[DEBUG] Token expirado (ExpiredSignatureError)")
+        print(f"[DEBUG] JWT ExpiredSignatureError caught")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="El token ha expirado"
+            detail="Token has expired"
         )
     
     except JWTError as e:
-        print(f"[DEBUG] Error de JWT (firma, etc): {str(e)}")
-        raise credentials_exception
+        print(f"[DEBUG] JWTError: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
 def generate_verification_token(length: int = 32) -> str:
     """Generate a secure random token for email verification or password reset"""
     alphabet = string.ascii_letters + string.digits

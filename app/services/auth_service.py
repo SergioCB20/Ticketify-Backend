@@ -65,14 +65,10 @@ class AuthService:
                 firstName=user.firstName,
                 lastName=user.lastName,
                 phoneNumber=user.phoneNumber,
-                documentType=user.documentType.value if user.documentType else None,
                 documentId=user.documentId,
-                country=user.country,
-                city=user.city,
-                gender=user.gender.value if user.gender else None,
-                profilePhoto=user.get_profile_photo_base64(),
+                profilePhoto=user.profilePhoto,
                 isActive=user.isActive,
-                roles=self._get_user_roles(user),
+                roles=self._get_user_roles(user),  # ✅ AGREGADO
                 createdAt=user.createdAt,
                 lastLogin=user.lastLogin
             )
@@ -129,14 +125,10 @@ class AuthService:
             firstName=user.firstName,
             lastName=user.lastName,
             phoneNumber=user.phoneNumber,
-            documentType=user.documentType.value if user.documentType else None,
             documentId=user.documentId,
-            country=user.country,
-            city=user.city,
-            gender=user.gender.value if user.gender else None,
-            profilePhoto=user.get_profile_photo_base64(),
+            profilePhoto=user.profilePhoto,
             isActive=user.isActive,
-            roles=self._get_user_roles(user),
+            roles=self._get_user_roles(user),  # ✅ AGREGADO
             createdAt=user.createdAt,
             lastLogin=datetime.utcnow()  # Current login
         )
@@ -263,18 +255,10 @@ class AuthService:
             firstName=user.firstName,
             lastName=user.lastName,
             phoneNumber=user.phoneNumber,
-            documentType=user.documentType.value if user.documentType else None,
             documentId=user.documentId,
-            country=user.country,
-            city=user.city,
-            gender=user.gender.value if user.gender else None,
-            profilePhoto=user.get_profile_photo_base64(),  # Devolver imagen en base64
+            profilePhoto=user.profilePhoto,
             isActive=user.isActive,
-            roles=self._get_user_roles(user),
+            roles=self._get_user_roles(user),  # ✅ AGREGADO
             createdAt=user.createdAt,
             lastLogin=user.lastLogin
         )
-    
-    def upload_profile_photo(self, user_id: uuid.UUID, photo_data: bytes, mime_type: str) -> Optional[User]:
-        """Upload user profile photo"""
-        return self.user_repo.upload_profile_photo(user_id, photo_data, mime_type)

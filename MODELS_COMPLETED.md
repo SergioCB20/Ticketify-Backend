@@ -195,8 +195,8 @@ Crear datos de prueba para los nuevos modelos:
 # app/seeds/roles_permissions.py
 def seed_roles_and_permissions():
     # Crear roles básicos
-    attendee_role = Role(name="ATTENDEE", description="Usuario asistente")
-    organizer_role = Role(name="ORGANIZER", description="Organizador de eventos")
+    attendee_role = Role(name="Attendee", description="Usuario asistente")
+    organizer_role = Role(name="Organizer", description="Organizador de eventos")
     
     # Crear permisos
     create_event = Permission(code="event.create", name="Crear eventos")

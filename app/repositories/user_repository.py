@@ -1,11 +1,9 @@
 from typing import Optional, List
+from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 from datetime import datetime
 import uuid
-import base64
-import re
 
-from sqlalchemy.orm import Session, joinedload
 from app.models.user import User
 from app.models.role import Role
 from app.schemas.auth import UserRegister, UserUpdate
@@ -29,20 +27,11 @@ class UserRepository:
     def get_by_document_id(self, document_id: str) -> Optional[User]:
         """Get user by document ID"""
         return self.db.query(User).filter(User.documentId == document_id).first()
-
-    def get_by_id_with_role(self, user_id: uuid.UUID) -> Optional[User]:
-        """Get user by ID, and eagerly load the user's role relationship"""
-        return self.db.query(User).options(joinedload(User.roles)).filter(User.id == user_id).first()
-
-
     
     def create_user(self, user_data: UserRegister) -> User:
         """Create a new user"""
         # Hash password
         hashed_password = get_password_hash(user_data.password)
-        
-        # Import enums from models
-        from app.models.user import DocumentType, Gender
         
         # Create user instance
         db_user = User(
@@ -51,11 +40,7 @@ class UserRepository:
             firstName=user_data.firstName.strip(),
             lastName=user_data.lastName.strip(),
             phoneNumber=user_data.phoneNumber,
-            documentType=DocumentType(user_data.documentType.value),
             documentId=user_data.documentId,
-            country=user_data.country,
-            city=user_data.city,
-            gender=Gender(user_data.gender.value),
             isActive=True
         )
         
@@ -63,7 +48,7 @@ class UserRepository:
         self.db.flush()  # Flush to get the user ID
         
         # Assign role based on userType
-        role_name = user_data.userType.value
+        role_name = "Attendee" if user_data.userType.value == "ATTENDEE" else "Organizer"
         role = self.db.query(Role).filter(Role.name == role_name).first()
         
         if role:
@@ -84,65 +69,13 @@ class UserRepository:
         return db_user
     
     def update_user(self, user_id: uuid.UUID, user_data: UserUpdate) -> Optional[User]:
-        """Update user information including profile photo in base64"""
+        """Update user information"""
         user = self.get_by_id(user_id)
         if not user:
             return None
         
-        # Get update data
-        update_data = user_data.dict(exclude_unset=True)
-        
-        # Manejar profilePhoto si viene en base64
-        if 'profilePhoto' in update_data:
-            profile_photo_base64 = update_data.pop('profilePhoto')
-            
-            if profile_photo_base64 is None:
-                # Eliminar foto
-                user.profilePhoto = None
-                user.profilePhotoMimeType = None
-            elif profile_photo_base64.startswith('data:image/'):
-                # Procesar base64
-                # Extraer MIME type y datos
-                match = re.match(r'data:(image/[\w+]+);base64,(.+)', profile_photo_base64)
-                if match:
-                    mime_type = match.group(1)
-                    base64_data = match.group(2)
-                    
-                    try:
-                        # Decodificar base64 a bytes
-                        photo_bytes = base64.b64decode(base64_data)
-                        
-                        # Validar tamaño (5MB máximo)
-                        if len(photo_bytes) > 5 * 1024 * 1024:
-                            from fastapi import HTTPException, status
-                            raise HTTPException(
-                                status_code=status.HTTP_400_BAD_REQUEST,
-                                detail="La imagen es demasiado grande. Tamaño máximo: 5MB"
-                            )
-                        
-                        # Guardar en el modelo
-                        user.upload_photo(photo_bytes, mime_type)
-                    except ValueError as e:
-                        from fastapi import HTTPException, status
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Imagen base64 inválida: {str(e)}"
-                        )
-        
-        # If email is being updated, check it's not taken by another user
-        if 'email' in update_data and update_data['email']:
-            new_email = update_data['email'].lower()
-            # Check if another user has this email
-            existing_user = self.get_by_email(new_email)
-            if existing_user and existing_user.id != user_id:
-                from fastapi import HTTPException, status
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="El correo electrónico ya está registrado por otro usuario"
-                )
-            update_data['email'] = new_email
-        
         # Update only provided fields
+        update_data = user_data.dict(exclude_unset=True)
         for field, value in update_data.items():
             if hasattr(user, field) and value is not None:
                 setattr(user, field, value)
@@ -175,20 +108,6 @@ class UserRepository:
         self.db.commit()
         
         return True
-    
-    def upload_profile_photo(self, user_id: uuid.UUID, photo_data: bytes, mime_type: str) -> Optional[User]:
-        """Upload profile photo as binary data"""
-        user = self.get_by_id(user_id)
-        if not user:
-            return None
-        
-        # Usar el método del modelo para guardar la foto
-        user.upload_photo(photo_data, mime_type)
-        
-        self.db.commit()
-        self.db.refresh(user)
-        
-        return user
     
     def set_reset_token(self, email: str, token: str, expires_at: datetime) -> bool:
         """Set password reset token for user"""

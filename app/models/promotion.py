@@ -1,20 +1,16 @@
-from sqlalchemy import Column, String, Boolean, DateTime, Enum, Integer, Numeric, Text, ForeignKey, Table
+from sqlalchemy import Column, String, Boolean, DateTime, Enum, Integer, Numeric, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import uuid
 import enum
-from datetime import datetime, timezone
 from app.core.database import Base
 
-
-# =========================================================
-# ENUMS
-# =========================================================
 class PromotionType(str, enum.Enum):
     PERCENTAGE = "PERCENTAGE"
     FIXED_AMOUNT = "FIXED_AMOUNT"
-
+    BUY_ONE_GET_ONE = "BUY_ONE_GET_ONE"
+    EARLY_BIRD = "EARLY_BIRD"
 
 class PromotionStatus(str, enum.Enum):
     ACTIVE = "ACTIVE"
@@ -22,11 +18,6 @@ class PromotionStatus(str, enum.Enum):
     EXPIRED = "EXPIRED"
     USED_UP = "USED_UP"
 
-
-
-# =========================================================
-# MODELO PRINCIPAL: PROMOTION
-# =========================================================
 class Promotion(Base):
     __tablename__ = "promotions"
     
@@ -67,27 +58,25 @@ class Promotion(Base):
     
     # Foreign keys
     created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    event_id = Column(UUID(as_uuid=True), ForeignKey("events.id"), nullable=False)
-
+    
     # Relationships
     created_by = relationship("User", back_populates="created_promotions")
     purchases = relationship("Purchase", back_populates="promotion")
-    event = relationship("Event", back_populates="promotions")
-
-    # =========================================================
-    # MÉTODOS AUXILIARES
-    # =========================================================
+    # Many-to-many relationship with events will be added separately
+    
     def __repr__(self):
         return f"<Promotion(code='{self.code}', type='{self.promotion_type}')>"
     
     @property
     def is_active(self):
         """Check if promotion is currently active"""
-        now = datetime.now(timezone.utc)
+        from datetime import datetime
+        now = datetime.utcnow()
+        
         return (
-            self.status == PromotionStatus.ACTIVE
-            and self.start_date <= now <= self.end_date
-            and (self.max_uses is None or self.current_uses < self.max_uses)
+            self.status == PromotionStatus.ACTIVE and
+            self.start_date <= now <= self.end_date and
+            (self.max_uses is None or self.current_uses < self.max_uses)
         )
     
     @property
@@ -124,20 +113,6 @@ class Promotion(Base):
         return discount
     
     def to_dict(self):
-        """Return serialized dictionary of the promotion (safe for ORM or dict relations)."""
-        # Manejar correctamente event_id, sea relación ORM o dict
-        event_id = None
-        try:
-            if hasattr(self, "event_id") and self.event_id:
-                event_id = str(self.event_id)
-            elif hasattr(self, "event") and self.event is not None:
-                if isinstance(self.event, dict):
-                    event_id = self.event.get("id")
-                elif hasattr(self.event, "id"):
-                    event_id = str(self.event.id)
-        except Exception:
-            event_id = None
-
         return {
             "id": str(self.id),
             "name": self.name,
@@ -159,8 +134,7 @@ class Promotion(Base):
             "status": self.status.value,
             "isPublic": self.is_public,
             "isActive": self.is_active,
-            "eventId": event_id,  # ✅ ahora sí se incluye correctamente
             "createdById": str(self.created_by_id),
             "createdAt": self.created_at.isoformat() if self.created_at else None,
-            "updatedAt": self.updated_at.isoformat() if self.updated_at else None,
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else None
         }

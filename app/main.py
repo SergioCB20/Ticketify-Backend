@@ -8,7 +8,7 @@ from app.api import api_router
 from app.core.database import Base, engine
 
 # Crear tablas si no existen
-#Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
 # Create FastAPI app
 app = FastAPI(
