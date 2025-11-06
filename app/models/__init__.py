@@ -21,6 +21,9 @@ from app.models.ticket_transfer import TicketTransfer
 # Payment models
 from app.models.payment import Payment, PaymentStatus, PaymentMethod
 from app.models.transaction import Transaction, TransactionType, TransactionStatus
+from app.models.purchase import Purchase
+# Promotion model
+from app.models.promotion import Promotion
 
 # Marketplace
 from app.models.marketplace_listing import MarketplaceListing, ListingStatus
@@ -70,6 +73,8 @@ __all__ = [
     "Transaction",
     "TransactionType",
     "TransactionStatus",
+    "Purchase",
+    "Promotion",
     
     # Marketplace
     "MarketplaceListing",
