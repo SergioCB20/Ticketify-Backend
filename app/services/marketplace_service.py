@@ -103,6 +103,7 @@ class MarketplaceService:
         
         # Generar QR visual para el nuevo ticket
         new_ticket.generate_qr()
+        print(f"✅ Nuevo QR generado para ticket {new_ticket.id}: {new_ticket.qrCode[:50]}...")  # Log temporal
         
         # 5. Registrar la transferencia en el historial
         transfer_log = TicketTransfer(
