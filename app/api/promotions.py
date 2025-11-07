@@ -115,7 +115,7 @@ def update_promotion(
             db=db,
             promo_id=promotion_id,
             update_data=payload,
-            current_user_id=current_user["id"]
+            current_user_id=current_user.id
         )
         return promotion
     except HTTPException:
