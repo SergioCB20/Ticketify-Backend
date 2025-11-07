@@ -12,7 +12,7 @@ from app.schemas.ticket import MyTicketResponse
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
-@router.get("/my-tickets", response_model=List[MyTicketResponse])
+@router.get("/my-tickets")
 async def get_my_tickets(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
@@ -23,49 +23,53 @@ async def get_my_tickets(
     
     # --- INICIO DE LA CORRECCIÓN ---
 
-    # 1. Definir la subconsulta correlacionada (la variable que faltaba)
-    #    Esta subconsulta buscará una 'MarketplaceListing' ACTIVA
-    #    que esté vinculada al 'Ticket.id' de la fila actual.
-    is_listed_subquery = (
-        select(
-            exists().where(
-                MarketplaceListing.ticket_id == Ticket.id,
-                MarketplaceListing.status == ListingStatus.ACTIVE
-            )
-        )
-        .scalar_subquery()  # La convierte en un valor escalar (True/False)
-    )
-
-    # 2. Construir la consulta principal
-    #    Seleccionamos el objeto Ticket y el resultado de la subconsulta (que llamamos "is_listed")
-    query = (
-        select(Ticket, is_listed_subquery.label("is_listed"))
-        .options(
-            joinedload(Ticket.event),
-            joinedload(Ticket.ticket_type)
-        )
-        .where(
-            Ticket.user_id == current_user.id,
-            # (He comentado esto para que puedas ver TODOS tus tickets,
-            #  incluso los usados o expirados, pero puedes descomentarlo)
-            # Ticket.status.in_([TicketStatus.ACTIVE, TicketStatus.TRANSFERRED])
-        )
-        .order_by(Ticket.purchaseDate.desc())
-    )
+    # 1. Obtener todos los tickets del usuario
+    tickets = db.query(Ticket).filter(
+        Ticket.user_id == current_user.id
+    ).options(
+        joinedload(Ticket.event),
+        joinedload(Ticket.ticket_type)
+    ).order_by(Ticket.purchaseDate.desc()).all()
     
-    # 3. Ejecutar la consulta
-    #    'results' será una lista de tuplas: [(Ticket_obj_1, True), (Ticket_obj_2, False), ...]
-    results = db.execute(query).all()
-    
-    # 4. Procesar los resultados para el schema de respuesta
-    #    Iteramos sobre las tuplas (Ticket, bool) y asignamos el booleano
-    #    al objeto ticket ANTES de retornarlo.
+    # 2. Para cada ticket, verificar si está listado en el marketplace
     response = []
-    for ticket, is_listed in results:
-        # Asignamos el atributo 'is_listed' al objeto ticket
-        # Pydantic (tu schema) lo leerá gracias a 'from_attributes = True'
-        ticket.is_listed = is_listed 
-        response.append(ticket)
+    for ticket in tickets:
+        # Buscar un listing ACTIVO para este ticket
+        active_listing = db.query(MarketplaceListing).filter(
+            MarketplaceListing.ticket_id == ticket.id,
+            MarketplaceListing.status == ListingStatus.ACTIVE
+        ).first()
+        
+        is_listed = active_listing is not None
+        listing_id = str(active_listing.id) if active_listing else None
+        
+        print(f"🔍 Processing ticket {ticket.id}: is_listed={is_listed}, listing_id={listing_id}")
+        
+        # Construir el diccionario de respuesta
+        ticket_dict = {
+            'id': str(ticket.id),
+            'price': float(ticket.price),
+            'purchaseDate': ticket.purchaseDate.isoformat() if ticket.purchaseDate else None,
+            'status': ticket.status.value,
+            'isValid': ticket.isValid,
+            'qrCode': ticket.qrCode if ticket.qrCode else None,  # Agregar el QR code
+            'event': {
+                'id': str(ticket.event.id),
+                'title': ticket.event.title,
+                'startDate': ticket.event.startDate.isoformat() if ticket.event.startDate else None,
+                'venue': ticket.event.venue
+            },
+            'ticketType': {
+                'id': str(ticket.ticket_type.id),
+                'name': ticket.ticket_type.name
+            },
+            'isListed': is_listed,
+            'listingId': listing_id
+        }
+        response.append(ticket_dict)
 
+    print(f"📦 Returning {len(response)} tickets")
+    if response:
+        print(f"🔍 First ticket: {response[0]}")
     return response
     # --- FIN DE LA CORRECCIÓN ---

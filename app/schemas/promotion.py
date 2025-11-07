@@ -58,7 +58,7 @@ class PromotionUpdate(BaseModel):
     end_date: Optional[datetime] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 
@@ -75,4 +75,4 @@ class PromotionResponse(PromotionBase):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
