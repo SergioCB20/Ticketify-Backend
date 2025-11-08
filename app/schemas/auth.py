@@ -181,6 +181,12 @@ class UserResponse(BaseModel):
     createdAt: datetime
     lastLogin: Optional[datetime] = None
     
+    # MercadoPago info (sin tokens sensibles)
+    mercadopago: Optional[dict] = Field(
+        None,
+        description="Info de MercadoPago: {isConnected, email, connectedAt, tokenExpired}"
+    )
+    
     class Config:
         from_attributes = True
         populate_by_name = True

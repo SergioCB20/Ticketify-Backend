@@ -76,6 +76,14 @@ def upgrade() -> None:
     sa.Column('isActive', sa.Boolean(), nullable=False),
     sa.Column('createdAt', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('lastLogin', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('mercadopagoUserId', sa.String(length=255), nullable=True),
+    sa.Column('mercadopagoPublicKey', sa.String(length=255), nullable=True),
+    sa.Column('mercadopagoAccessToken', sa.Text(), nullable=True),
+    sa.Column('mercadopagoRefreshToken', sa.Text(), nullable=True),
+    sa.Column('mercadopagoTokenExpires', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('isMercadopagoConnected', sa.Boolean(), nullable=False, server_default='false'),
+    sa.Column('mercadopagoConnectedAt', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('mercadopagoEmail', sa.String(length=255), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_users_documentId'), 'users', ['documentId'], unique=True)

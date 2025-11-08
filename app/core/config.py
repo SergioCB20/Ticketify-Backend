@@ -22,11 +22,23 @@ class Settings(BaseSettings):
 
     # CORS
     ALLOWED_HOSTS: List[str] = ["http://localhost:3000"]
+    
+    # NGROK
+    NGROK_URL: str = ""  # URL de ngrok para desarrollo
 
     # MercadoPago
     MERCADOPAGO_ACCESS_TOKEN: str
     MERCADOPAGO_PUBLIC_KEY: str
     MERCADOPAGO_SANDBOX: bool = True
+    
+    # MercadoPago OAuth
+    MERCADOPAGO_CLIENT_ID: str
+    MERCADOPAGO_CLIENT_SECRET: str
+    MERCADOPAGO_REDIRECT_URI: str
+    MERCADOPAGO_ENVIRONMENT: str = "sandbox"
+    
+    # Encryption (para tokens de vendedores)
+    FERNET_KEY: str
 
     # Email Configuration
     SMTP_SERVER: str
@@ -58,6 +70,15 @@ class Settings(BaseSettings):
             except:
                 # si no es JSON, asume coma separada
                 return [item.strip() for item in v.split(",")]
+        return v
+    
+    @field_validator("MERCADOPAGO_REDIRECT_URI", mode="before")
+    def expand_redirect_uri(cls, v, info):
+        """Expandir ${NGROK_URL} en MERCADOPAGO_REDIRECT_URI"""
+        if isinstance(v, str) and "${NGROK_URL}" in v:
+            import os
+            ngrok_url = os.getenv("NGROK_URL", "")
+            return v.replace("${NGROK_URL}", ngrok_url)
         return v
 
     class Config:
