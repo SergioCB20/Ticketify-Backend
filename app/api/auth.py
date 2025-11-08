@@ -9,11 +9,21 @@ from app.services.auth_service import AuthService
 from app.schemas.auth import (
     UserRegister, UserLogin, AuthResponse, UserResponse, 
     MessageResponse, RefreshToken, ChangePassword, 
-    ForgotPassword, PasswordReset, UserUpdate
+    ForgotPassword, PasswordReset, UserUpdate, GoogleLoginRequest
 )
 from app.models.user import User
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+@router.post("/google/login", response_model=AuthResponse, status_code=status.HTTP_200_OK)
+async def google_login(
+    data: GoogleLoginRequest,
+    db: Session = Depends(get_db)
+):
+    """Endpoint para manejar el login con Google de usuarios YA REGISTRADOS."""
+    auth_service = AuthService(db)
+    # La función del servicio ahora se llama login_with_google
+    return auth_service.login_with_google(data)
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(
@@ -132,7 +142,7 @@ async def update_user_profile(
     - country: Country of residence
     - city: City of residence
     - gender: Gender (masculino, femenino, otro, prefiero-no-decir)
-    - profilePhoto: Profile photo URL
+    - profilePhoto: Profile photo base64
     
     Note: If you change your email, you'll need to verify it again.
     """
