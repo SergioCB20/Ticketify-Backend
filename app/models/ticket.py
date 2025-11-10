@@ -52,9 +52,17 @@ class Ticket(Base):
         return f"<Ticket(id='{self.id}', status='{self.status}')>"
     
     def generate_qr(self):
-        """Generate QR code for ticket"""
-        import secrets
-        self.qrCode = secrets.token_urlsafe(32)
+        """Generate QR code image for ticket"""
+        from app.utils.qr_generator import generate_qr_image, generate_ticket_qr_data
+        
+        # Generar el contenido del QR (JSON con info del ticket)
+        qr_data = generate_ticket_qr_data(
+            ticket_id=str(self.id),
+            event_id=str(self.event_id)
+        )
+        
+        # Generar la imagen del QR en base64
+        self.qrCode = generate_qr_image(qr_data)
         return self.qrCode
     
     def invalidate_qr(self):

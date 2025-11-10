@@ -99,9 +99,8 @@ class EventDetailResponse(EventResponse):
     category: Optional[CategoryInfo] = None
     
     class Config:
-        orm_mode = True
         from_attributes = True
-        allow_population_by_field_name = True
+        populate_by_name = True
 
 class EventListResponse(BaseModel):
     """Schema de respuesta para lista de eventos paginada"""
@@ -163,7 +162,7 @@ class EventSearchResponse(BaseModel):
     total_pages: int = Field(..., description="Total de páginas disponibles")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "events": [
                     {

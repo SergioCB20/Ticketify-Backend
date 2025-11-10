@@ -23,7 +23,8 @@ class MyTicketResponse(BaseModel):
     ticketType: TicketTypeSimpleResponse = Field(..., alias="ticket_type")
     
     # Para saber si ya está a la venta
-    isListed: bool = Field(False, alias="is_listed") 
+    isListed: bool = Field(False, alias="is_listed")
+    listingId: Optional[UUID] = Field(None, alias="listing_id")
 
     class Config:
         from_attributes = True
