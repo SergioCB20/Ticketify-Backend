@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from uuid import UUID, uuid4
 from datetime import datetime
 from decimal import Decimal
-
+from datetime import timezone
 from app.core.database import get_db
 from app.core.dependencies import get_attendee_user
 from app.models.user import User
@@ -14,7 +14,7 @@ from app.models.event import Event
 from app.models.ticket import Ticket, TicketStatus
 from app.models.ticket_type import TicketType
 from app.models.payment import Payment, PaymentMethod, PaymentStatus
-from app.models.purchase import Purchase
+from app.models.purchase import Purchase, PurchaseStatus
 from app.schemas.purchase import (
     ProcessPaymentRequest,
     PurchaseResponse,
@@ -44,7 +44,7 @@ async def process_purchase(
         )
     
     # Verificar que el evento no haya pasado
-    if event.startDate < datetime.now():
+    if event.startDate < datetime.now(timezone.utc):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No se pueden comprar tickets para eventos pasados"
@@ -74,7 +74,7 @@ async def process_purchase(
     
     # 4. SIMULAR PROCESAMIENTO DE PAGO (Datos ficticios)
     # En producción, aquí se llamaría a MercadoPago u otro gateway
-    payment_successful = _simulate_payment_processing(
+    payment_successful, payment_message = _simulate_payment_processing(
         card_number=request.payment.cardNumber,
         amount=total_amount
     )
@@ -82,7 +82,7 @@ async def process_purchase(
     if not payment_successful:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail="El pago fue rechazado. Verifica los datos de tu tarjeta."
+            detail=payment_message
         )
     
     # 5. CREAR REGISTRO DE PAGO
@@ -99,12 +99,23 @@ async def process_purchase(
     
     # 6. CREAR REGISTRO DE COMPRA
     purchase = Purchase(
-        totalAmount=Decimal(str(total_amount)),
-        purchaseDate=datetime.utcnow(),
-        user_id=current_user.id,
-        event_id=event.id,
-        payment_id=payment.id
-    )
+    total_amount=Decimal(str(total_amount)),
+    subtotal=Decimal(str(total_amount)),  # ✅ Igualamos subtotal al total
+    tax_amount=Decimal("0.00"),
+    service_fee=Decimal("0.00"),
+    discount_amount=Decimal("0.00"),
+    quantity=request.purchase.quantity,
+    unit_price=ticket_type.price,
+    status=PurchaseStatus.COMPLETED,
+    payment_method=PaymentMethod.CREDIT_CARD,
+    buyer_email=current_user.email,
+    purchase_date=datetime.now(timezone.utc),
+    user_id=current_user.id,
+    event_id=event.id,
+    ticket_type_id=ticket_type.id,
+    payment_id=payment.id
+)
+
     db.add(purchase)
     db.flush()  # Obtener el purchase.id
     
@@ -131,8 +142,9 @@ async def process_purchase(
         tickets_created.append(ticket)
     
     # 8. ACTUALIZAR DISPONIBILIDAD
-    ticket_type.available -= request.purchase.quantity
-    ticket_type.sold += request.purchase.quantity
+    ticket_type.quantity_available -= request.purchase.quantity
+    ticket_type.sold_quantity += request.purchase.quantity
+
     
     # 9. COMMIT DE TODA LA TRANSACCIÓN
     try:
@@ -173,21 +185,16 @@ async def process_purchase(
     )
 
 
-def _simulate_payment_processing(card_number: str, amount: float) -> bool:
+def _simulate_payment_processing(card_number: str, amount: float) -> tuple[bool, str]:
     """
     Simula el procesamiento de un pago.
-    En producción, esto llamaría a MercadoPago, Stripe, etc.
-    
-    Reglas de simulación:
-    - Tarjetas que terminan en 0000: Rechazadas
-    - Tarjetas que terminan en 1111: Fondos insuficientes
-    - Cualquier otra: Aprobada
     """
     last_digits = card_number[-4:]
     
     if last_digits == "0000":
-        return False  # Tarjeta rechazada
+        return (False, "Tarjeta rechazada por el banco emisor.")
     elif last_digits == "1111":
-        return False  # Fondos insuficientes
+        return (False, "Fondos insuficientes.")
     else:
-        return True  # Pago aprobado
+        return (True, "Pago aprobado.")
+

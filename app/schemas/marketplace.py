@@ -28,7 +28,7 @@ class MarketplaceListingResponse(BaseModel):
     views_count: str 
     inquiries_count: str 
     
-    
+     
     event: EventSimpleResponse
     seller: UserSimpleResponse
     
@@ -37,8 +37,9 @@ class MarketplaceListingResponse(BaseModel):
     eventId: UUID = Field(..., alias="event_id")
     sellerId: UUID = Field(..., alias="seller_id")
     buyerId: Optional[UUID] = Field(None, alias="buyer_id") # <-- Añadido por si acaso
+    ticketTypeId: UUID = Field(..., alias="ticket_type_id")
     
-
+ 
     class Config:
         from_attributes = True
         populate_by_name = True
