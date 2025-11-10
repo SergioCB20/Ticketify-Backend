@@ -4,19 +4,31 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 from uuid import UUID
 import math
+from fastapi import HTTPException, status
 
-from app.models.user import User
+# Importaciones de Modelos y Esquemas
+from app.models.user import User, AdminRole
 from app.models.role import Role
+from app.models.event import Event
+from app.models.ticket import Ticket
 from app.schemas.admin import (
     UserListResponse, UserDetailResponse, PaginatedUsersResponse,
-    AdminListResponse, AdminStatsResponse
+    AdminListResponse, AdminStats, CreateAdminRequest  # <-- Schemas actualizados
 )
+
+# Importaciones de Repositorios y Utilidades
+from app.repositories.user_repository import UserRepository
+from app.repositories.role_repository import RoleRepository
+from app.utils.security import get_password_hash # Para crear admin
 
 class AdminService:
     """Servicio para operaciones administrativas"""
     
     def __init__(self, db: Session):
-        self.db = db
+        # El servicio ahora usa repositorios
+        self.db = db # Mantenemos la sesión por si algún repo la necesita
+        self.user_repo = UserRepository(db)
+        self.role_repo = RoleRepository(db)
     
     # ============= USUARIOS =============
     
@@ -29,37 +41,15 @@ class AdminService:
     ) -> PaginatedUsersResponse:
         """Obtener usuarios paginados (excluyendo admins)"""
         
-        # Query base - solo usuarios sin roles de admin
-        query = self.db.query(User).outerjoin(User.roles)
-        
-        # Filtrar usuarios que NO tienen roles de admin
-        admin_role_names = ['SUPER_ADMIN', 'SUPPORT_ADMIN', 'SECURITY_ADMIN', 'CONTENT_ADMIN']
-        query = query.filter(
-            ~User.roles.any(Role.name.in_(admin_role_names))
+        # Delegamos la lógica de consulta al repositorio
+        users, total = self.user_repo.get_non_admin_users_paginated(
+            page=page,
+            page_size=page_size,
+            search=search,
+            is_active=is_active
         )
         
-        # Aplicar filtros
-        if search:
-            search_filter = or_(
-                User.email.ilike(f"%{search}%"),
-                User.firstName.ilike(f"%{search}%"),
-                User.lastName.ilike(f"%{search}%"),
-                User.documentId.ilike(f"%{search}%")
-            )
-            query = query.filter(search_filter)
-        
-        if is_active is not None:
-            query = query.filter(User.isActive == is_active)
-        
-        # Contar total
-        total = query.count()
-        
-        # Calcular paginación
         total_pages = math.ceil(total / page_size)
-        offset = (page - 1) * page_size
-        
-        # Obtener usuarios
-        users = query.order_by(User.createdAt.desc()).offset(offset).limit(page_size).all()
         
         # Convertir a response
         user_responses = [
@@ -87,7 +77,7 @@ class AdminService:
     
     def get_user_by_id(self, user_id: UUID) -> Optional[UserDetailResponse]:
         """Obtener usuario por ID con detalles completos"""
-        user = self.db.query(User).filter(User.id == user_id).first()
+        user = self.user_repo.get_by_id(user_id)
         
         if not user:
             return None
@@ -116,36 +106,24 @@ class AdminService:
         admin_id: UUID = None
     ) -> UserDetailResponse:
         """Banear o desbanear un usuario"""
-        user = self.db.query(User).filter(User.id == user_id).first()
+        user = self.user_repo.get_by_id(user_id)
         
         if not user:
             return None
         
-        user.isActive = is_active
+        # Actualizamos usando el repositorio
+        updated_user = self.user_repo.update(user, {"isActive": is_active})
         
-        # Aquí podrías registrar en un log de auditoría
-        # audit_log = AuditLog(
-        #     user_id=admin_id,
-        #     action="BAN_USER" if not is_active else "UNBAN_USER",
-        #     target_user_id=user_id,
-        #     reason=reason
-        # )
-        # self.db.add(audit_log)
+        # Aquí la lógica de AuditLog...
         
-        self.db.commit()
-        self.db.refresh(user)
-        
-        return self.get_user_by_id(user_id)
+        return self.get_user_by_id(updated_user.id)
     
     # ============= ADMINISTRADORES =============
     
     def get_all_admins(self) -> List[AdminListResponse]:
         """Obtener todos los administradores"""
-        admin_role_names = ['SUPER_ADMIN', 'SUPPORT_ADMIN', 'SECURITY_ADMIN', 'CONTENT_ADMIN']
         
-        admins = self.db.query(User).join(User.roles).filter(
-            Role.name.in_(admin_role_names)
-        ).all()
+        admins = self.user_repo.get_all_admins()
         
         admin_responses = []
         for admin in admins:
@@ -166,6 +144,60 @@ class AdminService:
         
         return admin_responses
     
+    # --- MÉTODO NUEVO ---
+    def create_admin(self, admin_data: CreateAdminRequest, creator_id: UUID) -> AdminListResponse:
+        """Crear un nuevo usuario administrador"""
+        
+        # 1. Verificar si el email ya existe
+        existing_user = self.user_repo.get_by_email(admin_data.email)
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El correo electrónico ya está registrado"
+            )
+        
+        # 2. Obtener el rol de admin
+        admin_role = self.role_repo.get_by_name(admin_data.role)
+        if not admin_role:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"El rol '{admin_data.role}' no existe"
+            )
+
+        # 3. Hashear contraseña
+        hashed_password = get_password_hash(admin_data.password)
+        
+        # 4. Crear el objeto User
+        new_admin_user = User(
+            email=admin_data.email,
+            password=hashed_password,
+            firstName=admin_data.firstName,
+            lastName=admin_data.lastName,
+            phoneNumber=admin_data.phoneNumber,
+            isActive=True
+        )
+        
+        # 5. Crear usuario y asignarle rol
+        # (Idealmente, tu user_repo tendría un método create_with_roles)
+        new_admin_user.roles.append(admin_role)
+        self.db.add(new_admin_user)
+        self.db.commit()
+        self.db.refresh(new_admin_user)
+        
+        # 6. Formatear y devolver la respuesta
+        return AdminListResponse(
+            id=str(new_admin_user.id),
+            email=new_admin_user.email,
+            firstName=new_admin_user.firstName,
+            lastName=new_admin_user.lastName,
+            phoneNumber=new_admin_user.phoneNumber,
+            isActive=new_admin_user.isActive,
+            roles=[admin_role.name],
+            createdAt=new_admin_user.createdAt,
+            lastLogin=new_admin_user.lastLogin
+        )
+    # --- FIN MÉTODO NUEVO ---
+
     def update_admin_role(
         self,
         admin_id: UUID,
@@ -173,24 +205,27 @@ class AdminService:
         updated_by: UUID
     ) -> Optional[AdminListResponse]:
         """Cambiar el rol de un administrador"""
-        admin = self.db.query(User).filter(User.id == admin_id).first()
+        admin = self.user_repo.get_by_id(admin_id)
         
         if not admin:
             return None
         
         # Obtener el nuevo rol
-        role = self.db.query(Role).filter(Role.name == new_role).first()
+        role = self.role_repo.get_by_name(new_role)
         
         if not role:
-            # Si el rol no existe, crearlo
-            role = Role(name=new_role, description=f"Rol de {new_role}")
-            self.db.add(role)
-            self.db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"El rol '{new_role}' no existe"
+            )
         
         # Remover roles antiguos de admin y asignar el nuevo
-        admin_role_names = ['SUPER_ADMIN', 'SUPPORT_ADMIN', 'SECURITY_ADMIN', 'CONTENT_ADMIN']
-        admin.roles = [r for r in admin.roles if r.name not in admin_role_names]
-        admin.roles.append(role)
+        admin_role_names = [r.value for r in AdminRole]
+        
+        # (Esta lógica es compleja, idealmente iría en el user_repo)
+        current_roles = [r for r in admin.roles if r.name not in admin_role_names]
+        current_roles.append(role)
+        admin.roles = current_roles
         
         self.db.commit()
         self.db.refresh(admin)
@@ -215,27 +250,25 @@ class AdminService:
         deactivated_by: UUID
     ) -> Optional[AdminListResponse]:
         """Desactivar cuenta de administrador"""
-        admin = self.db.query(User).filter(User.id == admin_id).first()
+        admin = self.user_repo.get_by_id(admin_id)
         
         if not admin:
             return None
         
-        admin.isActive = False
-        self.db.commit()
-        self.db.refresh(admin)
+        updated_admin = self.user_repo.update(admin, {"isActive": False})
         
-        roles = [role.name for role in admin.roles]
+        roles = [role.name for role in updated_admin.roles]
         
         return AdminListResponse(
-            id=str(admin.id),
-            email=admin.email,
-            firstName=admin.firstName,
-            lastName=admin.lastName,
-            phoneNumber=admin.phoneNumber,
-            isActive=admin.isActive,
+            id=str(updated_admin.id),
+            email=updated_admin.email,
+            firstName=updated_admin.firstName,
+            lastName=updated_admin.lastName,
+            phoneNumber=updated_admin.phoneNumber,
+            isActive=updated_admin.isActive,
             roles=roles,
-            createdAt=admin.createdAt,
-            lastLogin=admin.lastLogin
+            createdAt=updated_admin.createdAt,
+            lastLogin=updated_admin.lastLogin
         )
     
     def activate_admin(
@@ -244,84 +277,71 @@ class AdminService:
         activated_by: UUID
     ) -> Optional[AdminListResponse]:
         """Reactivar cuenta de administrador"""
-        admin = self.db.query(User).filter(User.id == admin_id).first()
+        admin = self.user_repo.get_by_id(admin_id)
         
         if not admin:
             return None
+            
+        updated_admin = self.user_repo.update(admin, {"isActive": True})
         
-        admin.isActive = True
-        self.db.commit()
-        self.db.refresh(admin)
-        
-        roles = [role.name for role in admin.roles]
+        roles = [role.name for role in updated_admin.roles]
         
         return AdminListResponse(
-            id=str(admin.id),
-            email=admin.email,
-            firstName=admin.firstName,
-            lastName=admin.lastName,
-            phoneNumber=admin.phoneNumber,
-            isActive=admin.isActive,
+            id=str(updated_admin.id),
+            email=updated_admin.email,
+            firstName=updated_admin.firstName,
+            lastName=updated_admin.lastName,
+            phoneNumber=updated_admin.phoneNumber,
+            isActive=updated_admin.isActive,
             roles=roles,
-            createdAt=admin.createdAt,
-            lastLogin=admin.lastLogin
+            createdAt=updated_admin.createdAt,
+            lastLogin=updated_admin.lastLogin
         )
     
     # ============= UTILIDADES =============
     
     def is_admin(self, user: User) -> bool:
         """Verificar si un usuario tiene rol de admin"""
-        admin_role_names = ['SUPER_ADMIN', 'SUPPORT_ADMIN', 'SECURITY_ADMIN', 'CONTENT_ADMIN']
+        admin_role_names = [r.value for r in AdminRole]
         return any(role.name in admin_role_names for role in user.roles)
     
     # ============= ESTADÍSTICAS =============
     
-    def get_statistics(self) -> AdminStatsResponse:
+    def get_statistics(self) -> AdminStats: # <-- CORREGIDO (AdminStatsResponse -> AdminStats)
         """Obtener estadísticas generales del sistema"""
         
-        # Usuarios totales (sin admins)
-        admin_role_names = ['SUPER_ADMIN', 'SUPPORT_ADMIN', 'SECURITY_ADMIN', 'CONTENT_ADMIN']
-        total_users = self.db.query(User).outerjoin(User.roles).filter(
-            ~User.roles.any(Role.name.in_(admin_role_names))
-        ).count()
+        # (Idealmente, estas consultas estarían en el repositorio)
         
-        # Usuarios activos
-        active_users = self.db.query(User).outerjoin(User.roles).filter(
-            ~User.roles.any(Role.name.in_(admin_role_names)),
-            User.isActive == True
-        ).count()
+        admin_role_names = [r.value for r in AdminRole]
+        
+        # Usuarios totales (sin admins)
+        total_users = self.user_repo.count_non_admins()
+        
+        # Usuarios activos (sin admins)
+        active_users = self.user_repo.count_non_admins(is_active=True)
         
         # Usuarios baneados
         banned_users = total_users - active_users
         
         # Administradores totales
-        total_admins = self.db.query(User).join(User.roles).filter(
-            Role.name.in_(admin_role_names)
-        ).count()
+        total_admins = self.user_repo.count_admins()
         
         # Administradores activos
-        active_admins = self.db.query(User).join(User.roles).filter(
-            Role.name.in_(admin_role_names),
-            User.isActive == True
-        ).count()
+        active_admins = self.user_repo.count_admins(is_active=True)
         
         # Registros recientes (últimos 7 días)
         seven_days_ago = datetime.utcnow() - timedelta(days=7)
-        recent_registrations = self.db.query(User).filter(
-            User.createdAt >= seven_days_ago
-        ).count()
+        recent_registrations = self.user_repo.count_new_users_since(seven_days_ago)
         
-        # Total de eventos y tickets (si existen las tablas)
+        # Total de eventos y tickets
         try:
-            from app.models.event import Event
-            from app.models.ticket import Ticket
-            total_events = self.db.query(Event).count()
-            total_tickets = self.db.query(Ticket).count()
+            total_events = self.db.query(func.count(Event.id)).scalar()
+            total_tickets = self.db.query(func.count(Ticket.id)).scalar()
         except:
             total_events = 0
             total_tickets = 0
         
-        return AdminStatsResponse(
+        return AdminStats(
             totalUsers=total_users,
             activeUsers=active_users,
             bannedUsers=banned_users,

@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 from datetime import datetime
 from decimal import Decimal
 from datetime import timezone
+
 from app.core.database import get_db
 from app.core.dependencies import get_attendee_user
 from app.models.user import User

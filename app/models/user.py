@@ -59,7 +59,7 @@ class User(Base):
     
     # Personal
     gender = Column(Enum(Gender), nullable=True)  # Género
-    profilePhoto = Column(LargeBinary, nullable=True)  # Foto de perfil almacenada como BLOB
+    profilePhoto = Column(LargeBinary, nullable=True)  
     profilePhotoMimeType = Column(String(50), nullable=True)  # Tipo MIME (image/jpeg, image/png, etc.)
     
     # MercadoPago OAuth fields

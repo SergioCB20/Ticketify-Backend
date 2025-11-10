@@ -3,6 +3,8 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 import uuid
+from app.schemas.auth import GoogleLoginRequest , UserUpdate
+from app.models.user import UserRole 
 
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import UserRegister, UserLogin, AuthResponse, UserResponse
@@ -278,6 +280,61 @@ class AuthService:
             mercadopago=user.get_mercadopago_info()  # Info de MercadoPago
         )
     
-    def upload_profile_photo(self, user_id: uuid.UUID, photo_data: bytes, mime_type: str) -> Optional[User]:
-        """Upload user profile photo"""
-        return self.user_repo.upload_profile_photo(user_id, photo_data, mime_type)
+    def login_with_google(self, data: GoogleLoginRequest) -> AuthResponse:
+        """Login or register user using Google OAuth"""
+        # 1. Buscar si el usuario ya existe
+        db_user = self.user_repo.get_by_email(data.email)
+    
+        if not db_user:
+            # 2. Si no existe, lanza un error claro.
+            raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="El usuario no está registrado. Por favor, completa el registro primero."
+         )
+
+        # 3. Si existe, actualiza su foto (opcional) y genera los tokens
+        if data.avatar and db_user.profilePhoto != data.avatar:
+            user_data_model = UserUpdate(profilePhoto=data.avatar)
+            self.user_repo.update_user(db_user.id, user_data_model)
+
+        # 4. Generar nuestros propios tokens JWT
+        access_token = create_access_token(
+            data={
+                "sub": db_user.email,
+                "user_id": str(db_user.id),
+                "roles": [r.name for r in db_user.roles],
+            }
+        )
+        refresh_token = create_refresh_token(
+            data={
+                "sub": db_user.email,
+                "user_id": str(db_user.id),
+            }
+        )
+
+        user_dict = {
+        "id": str(db_user.id),
+        "email": db_user.email,
+        "firstName": db_user.firstName,
+        "lastName": db_user.lastName,
+        "phoneNumber": db_user.phoneNumber,
+        "documentId": db_user.documentId,
+        "documentType": db_user.documentType,
+        "country": db_user.country,
+        "city": db_user.city,
+        "gender": db_user.gender,
+        "isActive": db_user.isActive,
+        "createdAt": db_user.createdAt,
+        "lastLogin": db_user.lastLogin,
+        "roles": [r.name for r in db_user.roles],
+        "profilePhoto": db_user.get_profile_photo_base64(),
+        }
+
+        user_response = UserResponse.model_validate(user_dict)
+
+        # 6. Retornar respuesta final
+        return AuthResponse(
+            user=user_response,
+            accessToken=access_token,
+            refreshToken=refresh_token,
+        )
