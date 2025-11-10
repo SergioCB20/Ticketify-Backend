@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime, Enum, Table, ForeignKey
+from sqlalchemy import Column, String, Boolean, DateTime, Enum, Table, ForeignKey, LargeBinary, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -52,14 +52,25 @@ class User(Base):
     # Document information
     documentType = Column(Enum(DocumentType), nullable=True)  # DNI, CE, Pasaporte
     documentId = Column(String(50), nullable=True, unique=True, index=True)  # Número de documento
-    profilePhoto = Column(String(500), nullable=True)  # Renombrado de avatar
+    
     # Location
     country = Column(String(100), nullable=True)  # País
     city = Column(String(100), nullable=True)  # Ciudad
     
     # Personal
     gender = Column(Enum(Gender), nullable=True)  # Género
-    profilePhoto = Column(String(500), nullable=True)  # Renombrado de avatar
+    profilePhoto = Column(LargeBinary, nullable=True)  # Foto de perfil almacenada como BLOB
+    profilePhotoMimeType = Column(String(50), nullable=True)  # Tipo MIME (image/jpeg, image/png, etc.)
+    
+    # MercadoPago OAuth fields
+    mercadopagoUserId = Column(String(255), nullable=True, unique=True, index=True)  # ID usuario en MP (UNIQUE)
+    mercadopagoPublicKey = Column(String(255), nullable=True)  # Public Key del vendedor
+    mercadopagoAccessToken = Column(Text, nullable=True)  # Access Token (ENCRIPTAR en producción)
+    mercadopagoRefreshToken = Column(Text, nullable=True)  # Refresh Token (ENCRIPTAR en producción)
+    mercadopagoTokenExpires = Column(DateTime(timezone=True), nullable=True)  # Expiración del token
+    isMercadopagoConnected = Column(Boolean, default=False, nullable=False)  # ¿Cuenta vinculada?
+    mercadopagoConnectedAt = Column(DateTime(timezone=True), nullable=True)  # Fecha de vinculación
+    mercadopagoEmail = Column(String(255), nullable=True)  # Email de su cuenta MP
     # Status
     isActive = Column(Boolean, default=True, nullable=False)  # Renombrado de is_active
     
@@ -108,9 +119,95 @@ class User(Base):
             if hasattr(self, key):
                 setattr(self, key, value)
     
-    def upload_photo(self, photo_url: str):
-        """Upload profile photo"""
-        self.profilePhoto = photo_url
+    def upload_photo(self, photo_data: bytes, mime_type: str):
+        """Upload profile photo as binary data"""
+        self.profilePhoto = photo_data
+        self.profilePhotoMimeType = mime_type
+    
+    def get_profile_photo_base64(self) -> str | None:
+        """Get profile photo as base64 string for JSON response"""
+        if self.profilePhoto:
+            import base64
+            encoded = base64.b64encode(self.profilePhoto).decode('utf-8')
+            return f"data:{self.profilePhotoMimeType or 'image/jpeg'};base64,{encoded}"
+        return None
+    
+    def connect_mercadopago(self, user_id: str, public_key: str, access_token: str, 
+                           refresh_token: str, expires_in: int, email: str):
+        """Connect MercadoPago account via OAuth (with encrypted tokens)"""
+        from datetime import datetime, timedelta, timezone
+        from app.utils.encryption import encrypt_data
+        
+        self.mercadopagoUserId = user_id
+        self.mercadopagoPublicKey = public_key
+        # Encriptar tokens antes de guardar
+        self.mercadopagoAccessToken = encrypt_data(access_token)
+        self.mercadopagoRefreshToken = encrypt_data(refresh_token)
+        self.mercadopagoTokenExpires = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+        self.isMercadopagoConnected = True
+        self.mercadopagoConnectedAt = datetime.now(timezone.utc)
+        self.mercadopagoEmail = email
+    
+    def disconnect_mercadopago(self):
+        """Disconnect MercadoPago account"""
+        self.mercadopagoUserId = None
+        self.mercadopagoPublicKey = None
+        self.mercadopagoAccessToken = None
+        self.mercadopagoRefreshToken = None
+        self.mercadopagoTokenExpires = None
+        self.isMercadopagoConnected = False
+        self.mercadopagoConnectedAt = None
+        self.mercadopagoEmail = None
+    
+    def is_mercadopago_token_expired(self) -> bool:
+        """Check if MercadoPago token is expired"""
+        if not self.mercadopagoTokenExpires:
+            return True
+        from datetime import datetime, timezone
+        # Usar datetime con timezone para comparar correctamente
+        now = datetime.now(timezone.utc)
+        # Asegurar que mercadopagoTokenExpires tenga timezone
+        expires = self.mercadopagoTokenExpires
+        if expires.tzinfo is None:
+            # Si no tiene timezone, asumir UTC
+            expires = expires.replace(tzinfo=timezone.utc)
+        return now >= expires
+    
+    def get_mercadopago_info(self) -> dict | None:
+        """Get MercadoPago connection info (without sensitive tokens)"""
+        if not self.isMercadopagoConnected:
+            return None
+        
+        return {
+            "isConnected": True,
+            "email": self.mercadopagoEmail,
+            "connectedAt": self.mercadopagoConnectedAt.isoformat() if self.mercadopagoConnectedAt else None,
+            "tokenExpired": self.is_mercadopago_token_expired()
+        }
+    
+    def get_decrypted_access_token(self) -> str | None:
+        """Get decrypted MercadoPago access token"""
+        if not self.mercadopagoAccessToken:
+            return None
+        
+        from app.utils.encryption import decrypt_data
+        try:
+            return decrypt_data(self.mercadopagoAccessToken)
+        except Exception:
+            # Si falla la desencriptación, el token puede estar corrupto o sin encriptar
+            return None
+    
+    def get_decrypted_refresh_token(self) -> str | None:
+        """Get decrypted MercadoPago refresh token"""
+        if not self.mercadopagoRefreshToken:
+            return None
+        
+        from app.utils.encryption import decrypt_data
+        try:
+            return decrypt_data(self.mercadopagoRefreshToken)
+        except Exception:
+            # Si falla la desencriptación, el token puede estar corrupto o sin encriptar
+            return None
     
     def to_dict(self):
         return {
@@ -124,7 +221,7 @@ class User(Base):
             "country": self.country,
             "city": self.city,
             "gender": self.gender.value if self.gender else None,
-            "profilePhoto": self.profilePhoto,
+            "profilePhoto": self.get_profile_photo_base64(),
             "isActive": self.isActive,
             "createdAt": self.createdAt.isoformat() if self.createdAt else None,
             "lastLogin": self.lastLogin.isoformat() if self.lastLogin else None,

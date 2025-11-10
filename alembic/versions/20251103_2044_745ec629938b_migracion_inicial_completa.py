@@ -68,13 +68,22 @@ def upgrade() -> None:
     sa.Column('phoneNumber', sa.String(length=20), nullable=True),
     sa.Column('documentId', sa.String(length=50), nullable=True),
     sa.Column('documentType', sa.Enum('DNI', 'CE', 'PASSPORT', name='documenttype'), nullable=True),
-    sa.Column('profilePhoto', sa.String(length=500), nullable=True),
+    sa.Column('profilePhoto', sa.LargeBinary(), nullable=True),
+    sa.Column('profilePhotoMimeType', sa.String(length=50), nullable=True),
     sa.Column('country', sa.String(length=100), nullable=True),
     sa.Column('city', sa.String(length=100), nullable=True),
     sa.Column('gender', sa.Enum('MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY', name='gender'), nullable=True),
     sa.Column('isActive', sa.Boolean(), nullable=False),
     sa.Column('createdAt', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('lastLogin', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('mercadopagoUserId', sa.String(length=255), nullable=True),
+    sa.Column('mercadopagoPublicKey', sa.String(length=255), nullable=True),
+    sa.Column('mercadopagoAccessToken', sa.Text(), nullable=True),
+    sa.Column('mercadopagoRefreshToken', sa.Text(), nullable=True),
+    sa.Column('mercadopagoTokenExpires', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('isMercadopagoConnected', sa.Boolean(), nullable=False, server_default='false'),
+    sa.Column('mercadopagoConnectedAt', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('mercadopagoEmail', sa.String(length=255), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_users_documentId'), 'users', ['documentId'], unique=True)
