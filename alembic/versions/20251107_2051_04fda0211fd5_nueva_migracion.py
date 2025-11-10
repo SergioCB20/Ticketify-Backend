@@ -1,8 +1,8 @@
-"""Migracion inicial completa
+"""nueva migracion
 
-Revision ID: 745ec629938b
+Revision ID: 04fda0211fd5
 Revises: 
-Create Date: 2025-11-03 20:44:03.031308
+Create Date: 2025-11-07 20:51:38.923364
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '745ec629938b'
+revision = '04fda0211fd5'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -68,11 +68,11 @@ def upgrade() -> None:
     sa.Column('phoneNumber', sa.String(length=20), nullable=True),
     sa.Column('documentId', sa.String(length=50), nullable=True),
     sa.Column('documentType', sa.Enum('DNI', 'CE', 'PASSPORT', name='documenttype'), nullable=True),
-    sa.Column('profilePhoto', sa.LargeBinary(), nullable=True),
-    sa.Column('profilePhotoMimeType', sa.String(length=50), nullable=True),
     sa.Column('country', sa.String(length=100), nullable=True),
     sa.Column('city', sa.String(length=100), nullable=True),
     sa.Column('gender', sa.Enum('MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY', name='gender'), nullable=True),
+    sa.Column('profilePhoto', sa.LargeBinary(), nullable=True),
+    sa.Column('profilePhotoMimeType', sa.String(length=50), nullable=True),
     sa.Column('isActive', sa.Boolean(), nullable=False),
     sa.Column('createdAt', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('lastLogin', sa.DateTime(timezone=True), nullable=True),

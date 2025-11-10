@@ -226,3 +226,9 @@ class RefreshToken(BaseModel):
     
     class Config:
         populate_by_name = True
+
+class GoogleLoginRequest(BaseModel):
+    email: EmailStr
+    firstName: str
+    lastName: str
+    avatar: Optional[str] = None
