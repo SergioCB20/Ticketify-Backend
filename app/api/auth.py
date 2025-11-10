@@ -122,7 +122,8 @@ async def get_user_profile(
         isActive=current_user.isActive,
         roles=roles,
         createdAt=current_user.createdAt,
-        lastLogin=current_user.lastLogin
+        lastLogin=current_user.lastLogin,
+        mercadopago=current_user.get_mercadopago_info()  # Info de MercadoPago
     )
 
 @router.put("/profile", response_model=UserResponse)
@@ -176,7 +177,8 @@ async def update_user_profile(
         isActive=updated_user.isActive,
         roles=roles,
         createdAt=updated_user.createdAt,
-        lastLogin=updated_user.lastLogin
+        lastLogin=updated_user.lastLogin,
+        mercadopago=updated_user.get_mercadopago_info()  # Info de MercadoPago
     )
 
 @router.post("/change-password", response_model=MessageResponse)

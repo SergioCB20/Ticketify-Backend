@@ -76,7 +76,8 @@ class AuthService:
                 isActive=user.isActive,
                 roles=self._get_user_roles(user),
                 createdAt=user.createdAt,
-                lastLogin=user.lastLogin
+                lastLogin=user.lastLogin,
+            mercadopago=user.get_mercadopago_info()  # Info de MercadoPago
             )
             
             return AuthResponse(
@@ -140,7 +141,8 @@ class AuthService:
             isActive=user.isActive,
             roles=self._get_user_roles(user),
             createdAt=user.createdAt,
-            lastLogin=datetime.utcnow()  # Current login
+            lastLogin=datetime.utcnow(),  # Current login
+            mercadopago=user.get_mercadopago_info()  # Info de MercadoPago
         )
         
         print(f"Login successful for: {user.email}, roles: {user_response.roles}")  # Debug log
@@ -274,7 +276,8 @@ class AuthService:
             isActive=user.isActive,
             roles=self._get_user_roles(user),
             createdAt=user.createdAt,
-            lastLogin=user.lastLogin
+            lastLogin=user.lastLogin,
+            mercadopago=user.get_mercadopago_info()  # Info de MercadoPago
         )
     
     def login_with_google(self, data: GoogleLoginRequest) -> AuthResponse:
