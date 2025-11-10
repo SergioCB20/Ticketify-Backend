@@ -1,12 +1,12 @@
-from typing import Optional, List
-from sqlalchemy import and_, or_
-from datetime import datetime
+from typing import Optional, List, Tuple, Dict, Any
+from sqlalchemy import and_, or_, func
+from datetime import datetime, timezone
 import re
 import base64
 import uuid
 from typing import Optional
 from fastapi import HTTPException, status
-from app.models.user import User
+from app.models.user import User, AdminRole
 from app.schemas.auth import UserUpdate
 
 from sqlalchemy.orm import Session, joinedload
@@ -38,7 +38,11 @@ class UserRepository:
         """Get user by ID, and eagerly load the user's role relationship"""
         return self.db.query(User).options(joinedload(User.roles)).filter(User.id == user_id).first()
 
-
+    # --- NUEVO MÉTODO AUXILIAR ---
+    def get_by_reset_token(self, token: str) -> Optional[User]:
+        """Get user by password reset token"""
+        return self.db.query(User).filter(User.resetToken == token).first()
+    # --- FIN NUEVO MÉTODO ---
     
     def create_user(self, user_data: UserRegister) -> User:
         """Create a new user"""
@@ -131,11 +135,11 @@ class UserRepository:
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Imagen base64 inválida: {str(e)}"
                     )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Formato de imagen no soportado"
-            )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Formato de imagen no soportado"
+                )
 
     # Validar email si se actualiza
         if 'email' in update_data and update_data['email']:
@@ -143,8 +147,8 @@ class UserRepository:
             existing_user = self.get_by_email(new_email)
             if existing_user and existing_user.id != user_id:
                 raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El correo electrónico ya está registrado por otro usuario"
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El correo electrónico ya está registrado por otro usuario"
                 )
             update_data['email'] = new_email
 
@@ -157,6 +161,17 @@ class UserRepository:
         self.db.refresh(user)
         return user
 
+    # --- NUEVO MÉTODO GENÉRICO REQUERIDO POR ADMINSERVICE ---
+    def update(self, user: User, data: Dict[str, Any]) -> User:
+        """Actualización genérica de campos de usuario"""
+        for field, value in data.items():
+            if hasattr(user, field):
+                setattr(user, field, value)
+        
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+    # --- FIN NUEVO MÉTODO ---
     
     def update_password(self, user_id: uuid.UUID, new_password: str) -> bool:
         """Update user password"""
@@ -176,26 +191,52 @@ class UserRepository:
         if not user:
             return False
         
-        user.login()
+        user.login() # Llama al método del modelo
         
         self.db.commit()
         
         return True
     
     
+    # --- MÉTODO CORREGIDO ---
     def set_reset_token(self, email: str, token: str, expires_at: datetime) -> bool:
         """Set password reset token for user"""
         user = self.get_by_email(email)
         if not user:
             return False
         
+        # Asigna el token y la expiración al modelo
+        user.resetToken = token
+        user.resetTokenExpires = expires_at
+        
         self.db.commit()
         
         return True
+    # --- FIN CORRECCIÓN ---
     
+    # --- MÉTODO CORREGIDO ---
     def reset_password(self, token: str, new_password: str) -> bool:
         """Reset user password using reset token"""
-        return False
+        
+        # 1. Encontrar al usuario por el token
+        user = self.get_by_reset_token(token)
+        if not user:
+            return False # Token no encontrado
+        
+        # 2. Verificar que el token no haya expirado
+        # (Usamos timezone.utc para comparar correctamente)
+        if user.resetTokenExpires is None or user.resetTokenExpires < datetime.now(timezone.utc):
+            return False # Token expirado
+        
+        # 3. Actualizar contraseña y anular el token
+        user.password = get_password_hash(new_password)
+        user.resetToken = None
+        user.resetTokenExpires = None
+        
+        self.db.commit()
+        
+        return True
+    # --- FIN CORRECCIÓN ---
     
     def deactivate_user(self, user_id: uuid.UUID) -> bool:
         """Deactivate user account"""
@@ -253,3 +294,87 @@ class UserRepository:
     def count_active_users(self) -> int:
         """Get active user count"""
         return self.db.query(User).filter(User.isActive == True).count()
+
+    # --- MÉTODOS REQUERIDOS POR ADMINSERVICE ---
+
+    def _get_admin_role_names(self) -> List[str]:
+        """Helper para obtener la lista de nombres de roles de admin"""
+        return [r.value for r in AdminRole]
+
+    def get_non_admin_users_paginated(
+        self,
+        page: int,
+        page_size: int,
+        search: Optional[str],
+        is_active: Optional[bool]
+    ) -> Tuple[List[User], int]:
+        """Obtener usuarios paginados que NO son administradores"""
+        
+        admin_role_names = self._get_admin_role_names()
+        
+        # Query base: excluye admins
+        query = self.db.query(User).outerjoin(User.roles).filter(
+            ~User.roles.any(Role.name.in_(admin_role_names))
+        )
+        
+        # Aplicar filtros
+        if search:
+            search_filter = or_(
+                User.email.ilike(f"%{search}%"),
+                User.firstName.ilike(f"%{search}%"),
+                User.lastName.ilike(f"%{search}%"),
+                User.documentId.ilike(f"%{search}%")
+            )
+            query = query.filter(search_filter)
+        
+        if is_active is not None:
+            query = query.filter(User.isActive == is_active)
+        
+        # Contar total ANTES de paginar
+        total = query.count()
+        
+        # Calcular paginación
+        offset = (page - 1) * page_size
+        
+        # Obtener usuarios
+        users = query.order_by(User.createdAt.desc()).offset(offset).limit(page_size).all()
+        
+        return users, total
+
+    def get_all_admins(self) -> List[User]:
+        """Obtener todos los usuarios que SÍ son administradores"""
+        admin_role_names = self._get_admin_role_names()
+        
+        admins = self.db.query(User).join(User.roles).filter(
+            Role.name.in_(admin_role_names)
+        ).distinct().all()
+        
+        return admins
+
+    def count_non_admins(self, is_active: Optional[bool] = None) -> int:
+        """Contar usuarios que NO son administradores"""
+        admin_role_names = self._get_admin_role_names()
+        query = self.db.query(func.count(User.id)).outerjoin(User.roles).filter(
+            ~User.roles.any(Role.name.in_(admin_role_names))
+        )
+        if is_active is not None:
+            query = query.filter(User.isActive == is_active)
+        
+        return query.scalar() or 0
+
+    def count_admins(self, is_active: Optional[bool] = None) -> int:
+        """Contar usuarios que SÍ son administradores"""
+        admin_role_names = self._get_admin_role_names()
+        query = self.db.query(func.count(User.id.distinct())).join(User.roles).filter(
+            Role.name.in_(admin_role_names)
+        )
+        if is_active is not None:
+            query = query.filter(User.isActive == is_active)
+            
+        return query.scalar() or 0
+
+    def count_new_users_since(self, date: datetime) -> int:
+        """Contar usuarios registrados desde una fecha específica"""
+        return self.db.query(func.count(User.id)).filter(
+            User.createdAt >= date
+        ).scalar() or 0

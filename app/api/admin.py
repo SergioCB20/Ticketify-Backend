@@ -8,7 +8,8 @@ from app.core.dependencies import get_current_active_user, require_super_admin
 from app.models.user import User
 from app.schemas.admin import (
     UserListResponse, UserDetailResponse, BanUserRequest,
-    AdminListResponse, UpdateAdminRoleRequest, PaginatedUsersResponse
+    AdminListResponse, UpdateAdminRoleRequest, PaginatedUsersResponse,
+    CreateAdminRequest, AdminStats  # <-- IMPORTS AÑADIDOS
 )
 from app.services.admin_service import AdminService
 
@@ -112,6 +113,29 @@ async def get_all_admins(
     admin_service = AdminService(db)
     return admin_service.get_all_admins()
 
+# --- NUEVO ENDPOINT ---
+@router.post("/admins", response_model=AdminListResponse, status_code=status.HTTP_201_CREATED)
+async def create_admin(
+    admin_data: CreateAdminRequest,
+    current_admin: User = Depends(require_super_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Crear un nuevo usuario Administrador
+    
+    Requiere: SUPER_ADMIN
+    """
+    admin_service = AdminService(db)
+    # El servicio (admin_service.create_admin) debe manejar
+    # la lógica de verificar si el email ya existe
+    # y lanzar un HTTPException si es necesario.
+    new_admin = admin_service.create_admin(
+        admin_data=admin_data,
+        creator_id=current_admin.id
+    )
+    return new_admin
+# --- FIN NUEVO ENDPOINT ---
+
 @router.patch("/admins/{admin_id}/role", response_model=AdminListResponse)
 async def update_admin_role(
     admin_id: UUID,
@@ -205,11 +229,14 @@ async def activate_admin(
 
 # ============= ESTADÍSTICAS =============
 
-@router.get("/stats")
+# --- CORREGIDO ---
+# (Se añadió el response_model que espera el frontend)
+@router.get("/stats", response_model=AdminStats) 
 async def get_admin_stats(
     current_admin: User = Depends(require_super_admin),
     db: Session = Depends(get_db)
 ):
+# --- FIN CORRECCIÓN ---
     """
     Obtener estadísticas generales del sistema
     

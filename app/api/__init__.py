@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from .auth import router as auth_router
-from .admin.users import router as admin_users_router
+from .admin import router as admin_users_router
 from .marketplace import router as marketplace_router
 from .categories import router as categories_router
 from .events import router as event_router
