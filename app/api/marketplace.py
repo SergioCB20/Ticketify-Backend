@@ -3,9 +3,12 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, func, or_
 from typing import List, Optional
 import math
+import traceback
 from uuid import UUID
 from datetime import timedelta, datetime 
-
+from pprint import pprint
+from fastapi.responses import JSONResponse
+from app.schemas.marketplace import MarketplaceListingResponse
 from app.core.database import get_db
 from app.core.dependencies import get_current_active_user 
 from app.core.dependencies import get_current_active_user, get_attendee_user
@@ -27,6 +30,7 @@ router = APIRouter(prefix="/marketplace", tags=["Marketplace"])
 
 # --- ENDPOINT GET (Para ver el listado) ---
 @router.get("/listings", response_model=PaginatedMarketplaceListings)
+
 async def get_active_listings(
     db: Session = Depends(get_db),
     page: int = Query(1, ge=1),
@@ -43,7 +47,8 @@ async def get_active_listings(
             .join(MarketplaceListing.event) # Join con Evento
             .options(
                 joinedload(MarketplaceListing.seller), # Cargar datos del vendedor
-                joinedload(MarketplaceListing.event)   # Cargar datos del evento
+                joinedload(MarketplaceListing.event),   # Cargar datos del evento
+                joinedload(MarketplaceListing.ticket).joinedload(Ticket.ticket_type)  # Cargar tipo de ticket
             )
             .where(MarketplaceListing.status == ListingStatus.ACTIVE)
         )
@@ -60,7 +65,7 @@ async def get_active_listings(
 
         # Contar el total de items (antes de paginar)
         total_query = select(func.count()).select_from(query.subquery())
-        total = db.execute(total_query).scalar()
+        total = db.execute(total_query).scalar() 
         
         if total is None:
             total = 0
@@ -71,17 +76,31 @@ async def get_active_listings(
         
         # Aplicar paginación y ejecutar query
         listings = db.scalars(query.order_by(MarketplaceListing.created_at.desc()).offset(offset).limit(page_size)).all()
+        # Justo antes del return:
+        from app.schemas.marketplace import MarketplaceListingResponse
+
+        response_data = PaginatedMarketplaceListings(
+            items=[MarketplaceListingResponse.model_validate(listing) for listing in listings],
+            total=total,
+            page=page,
+            pageSize=page_size,
+            totalPages=total_pages,
+        )
+        return response_data
+
+
         
-        return {
-            "items": listings,
-            "total": total,
-            "page": page,
-            "pageSize": page_size,
-            "totalPages": total_pages
-        }
+        #return {
+        #    "items": listings,
+        #    "total": total,
+        #    "page": page,
+        #    "pageSize": page_size,
+        #    "totalPages": total_pages
+        #}*/
 
     except Exception as e:
         print(f"Error al obtener listados del marketplace: {e}")
+        traceback.print_exc() 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error interno al cargar los listados."

@@ -60,6 +60,8 @@ class TicketType(Base):
         """Check if ticket type is sold out"""
         return self.remaining_quantity <= 0
     
+    
+
     @property
     def is_on_sale(self):
         """Check if ticket type is currently on sale"""
@@ -76,6 +78,11 @@ class TicketType(Base):
             return False
             
         return not self.is_sold_out
+    
+    @property
+    def available(self):
+        """Alias para la cantidad restante de tickets (usado en purchases.py)"""
+        return self.remaining_quantity
     
     def to_dict(self):
         return {
