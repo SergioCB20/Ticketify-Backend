@@ -1,52 +1,77 @@
-# app/api/tickets.py
 from fastapi import APIRouter, Depends, Query, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from uuid import UUID
 from typing import Any, Dict, List
-from app.core.dependencies import get_db, get_current_user
 
+from app.core.dependencies import get_db, get_current_user  # usamos el mismo dep que ya te funciona
+from app.models.user import User
 from app.models.ticket import Ticket
 from app.models.event import Event
+
+# Marketplace (puede no existir en algunas ramas)
+try:
+    from app.models.marketplace_listing import MarketplaceListing, ListingStatus
+    MARKETPLACE_ENABLED = True
+except Exception:
+    MARKETPLACE_ENABLED = False
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
 
 def _get_attr(obj, *names, default=None):
+    """Lee atributo tolerante a snake/camel: purchase_date vs purchaseDate, etc."""
     for n in names:
         if hasattr(obj, n):
             return getattr(obj, n)
     return default
 
+
 @router.get("/my-tickets")
-def list_my_tickets(
+def get_my_tickets(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    q = (
-        db.query(Ticket, Event)
-        .join(Event, Event.id == Ticket.event_id)
+    """
+    Versión unificada: usa la lógica del 'main' (tickets del usuario + flag de marketplace),
+    pero devuelve el shape que ya consume tu frontend: { items, total, page, page_size }.
+    """
+    # Trae los tickets del usuario con event y ticket_type (como en main)
+    tickets: List[Ticket] = (
+        db.query(Ticket)
         .filter(Ticket.user_id == current_user.id)
-    )
-
-    total = q.count()
-    rows = (
-        q.order_by(
-            # intenta por purchase_date, si no existe usa created_at, y si no, id
+        .options(
+            joinedload(Ticket.event),
+            joinedload(getattr(Ticket, "ticket_type", None))  # por si existe relación
+        )
+        # ordena por purchaseDate si existe; si no, created_at; si no, id
+        .order_by(
             _get_attr(Ticket, "purchase_date", "purchaseDate", "created_at", "createdAt", "id")
         )
-        .offset((page - 1) * page_size)
-        .limit(page_size)
         .all()
     )
 
     items: List[Dict[str, Any]] = []
-    for t, e in rows:
-        purchase_date = _get_attr(t, "purchase_date", "purchaseDate")
-        qr_code = _get_attr(t, "qr_code", "qrCode", "code")
-        status_val = _get_attr(t, "status")
-        status_val = getattr(status_val, "value", status_val)  # enum o str
+    for t in tickets:
+        e = _get_attr(t, "event")
+        tt = _get_attr(t, "ticket_type", "ticketType")
+
+        # ¿Está listado en marketplace? (solo si el modelo existe)
+        is_listed = False
+        listing_id = None
+        if MARKETPLACE_ENABLED:
+            active_listing = (
+                db.query(MarketplaceListing)
+                .filter(
+                    MarketplaceListing.ticket_id == t.id,
+                    MarketplaceListing.status == ListingStatus.ACTIVE,
+                )
+                .first()
+            )
+            if active_listing:
+                is_listed = True
+                listing_id = str(active_listing.id)
 
         multimedia = _get_attr(e, "multimedia") or []
         cover = None
@@ -55,29 +80,47 @@ def list_my_tickets(
         except Exception:
             cover = None
 
+        status_val = _get_attr(t, "status")
+        status_val = getattr(status_val, "value", status_val)  # enum o str
+
         item = {
             "id": str(t.id),
-            "code": qr_code,
+            "price": _get_attr(t, "price"),
+            "code": _get_attr(t, "qr_code", "qrCode", "code"),
+            "purchase_date": _get_attr(t, "purchase_date", "purchaseDate"),
             "status": status_val,
-            "purchase_date": purchase_date,
+            "is_valid": _get_attr(t, "isValid", "is_valid", default=True),
             "event": {
-                "id": str(e.id),
-                "title": e.title,
+                "id": str(_get_attr(e, "id")),
+                "title": _get_attr(e, "title"),
                 "start_date": _get_attr(e, "start_date", "startDate"),
-                "venue": e.venue,
+                "venue": _get_attr(e, "venue"),
                 "cover_image": cover,
             },
+            "ticketType": {
+                "id": str(_get_attr(tt, "id")) if tt else None,
+                "name": _get_attr(tt, "name") if tt else None,
+            },
+            "isListed": is_listed,
+            "listingId": listing_id,
         }
         items.append(item)
 
+    total = len(items)
+    # Mantiene el contrato { items, total, page, page_size } que ya usa tu front
+    # (si quieres paginar de verdad, aplica slicing aquí)
     return {"items": items, "total": total, "page": page, "page_size": page_size}
+
 
 @router.get("/my-tickets/{ticket_id}")
 def get_my_ticket(
     ticket_id: UUID,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
+    """
+    Detalle de un ticket del usuario (mantiene tu endpoint original).
+    """
     row = (
         db.query(Ticket, Event)
         .join(Event, Event.id == Ticket.event_id)
@@ -88,11 +131,6 @@ def get_my_ticket(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
 
     t, e = row
-    purchase_date = _get_attr(t, "purchase_date", "purchaseDate")
-    qr_code = _get_attr(t, "qr_code", "qrCode", "code")
-    status_val = _get_attr(t, "status")
-    status_val = getattr(status_val, "value", status_val)
-
     multimedia = _get_attr(e, "multimedia") or []
     cover = None
     try:
@@ -100,11 +138,14 @@ def get_my_ticket(
     except Exception:
         cover = None
 
+    status_val = _get_attr(t, "status")
+    status_val = getattr(status_val, "value", status_val)
+
     return {
         "id": str(t.id),
         "price": _get_attr(t, "price"),
-        "qr_code": qr_code,                    # <-- úsalo en el front para generar el QR
-        "purchase_date": purchase_date,
+        "qr_code": _get_attr(t, "qr_code", "qrCode", "code"),
+        "purchase_date": _get_attr(t, "purchase_date", "purchaseDate"),
         "status": status_val,
         "event": {
             "id": str(e.id),

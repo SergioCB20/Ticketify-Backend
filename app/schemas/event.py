@@ -96,12 +96,9 @@ class EventResponse(BaseModel):
 class EventDetailResponse(EventResponse):
     """Schema de respuesta detallado que incluye info del organizador y categoría"""
     organizer: Optional[OrganizerInfo] = None
-    category: Optional[CategoryInfo] = None
-    
-    model_config = ConfigDict(
-        from_attributes=True,     # reemplaza orm_mode
-        populate_by_name=True     # reemplaza allow_population_by_field_name
-    )
+    category: Optional[CategoryInfo] = None    
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
 
 class EventListResponse(BaseModel):
     """Schema de respuesta para lista de eventos paginada"""
@@ -161,9 +158,8 @@ class EventSearchResponse(BaseModel):
     page: int = Field(..., description="Página actual")
     page_size: int = Field(..., description="Tamaño de página")
     total_pages: int = Field(..., description="Total de páginas disponibles")
-    
-    class Config:
-        model_config = ConfigDict(
+
+    model_config = ConfigDict(
         json_schema_extra = {
             "example": {
                 "events": [
@@ -228,3 +224,58 @@ class OrganizerEventResponse(BaseModel):
 
     # Permite que Pydantic lea los datos desde un modelo de SQLAlchemy
     model_config = ConfigDict(from_attributes=True)
+
+class EventCategoryBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+    slug: str = Field(..., min_length=1, max_length=120)
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    image_url: Optional[str] = None
+    meta_title: Optional[str] = None
+    meta_description: Optional[str] = None
+    parent_id: Optional[UUID] = None
+    sort_order: int = 0
+    level: int = 0
+    is_active: bool = True
+    is_featured: bool = False
+
+class EventCategoryCreate(EventCategoryBase):
+    pass
+
+class EventCategoryUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    slug: Optional[str] = Field(None, min_length=1, max_length=120)
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    image_url: Optional[str] = None
+    meta_title: Optional[str] = None
+    meta_description: Optional[str] = None
+    parent_id: Optional[UUID] = None
+    sort_order: Optional[int] = None
+    level: Optional[int] = None
+    is_active: Optional[bool] = None
+    is_featured: Optional[bool] = None
+
+class EventCategoryResponse(BaseModel):
+    id: UUID
+    name: str
+    description: Optional[str] = None
+    slug: str
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    imageUrl: Optional[str] = None
+    metaTitle: Optional[str] = None
+    metaDescription: Optional[str] = None
+    parentId: Optional[UUID] = None
+    sortOrder: int
+    level: int
+    isActive: bool
+    isFeatured: bool
+    eventCount: int
+    createdAt: datetime
+    updatedAt: datetime
+    
+    class Config:
+        from_attributes = True
