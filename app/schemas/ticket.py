@@ -4,6 +4,13 @@ from datetime import datetime
 from uuid import UUID
 from .event import EventSimpleResponse # (Ya lo creamos)
 
+class TicketCreateRequest(BaseModel):
+    event_id: UUID
+    ticket_type_id: UUID
+    price: float
+    promo_code: Optional[str] ## str | None = None
+
+
 class TicketTypeSimpleResponse(BaseModel):
     id: UUID
     name: str
