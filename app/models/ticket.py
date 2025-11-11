@@ -35,12 +35,14 @@ class Ticket(Base):
     event_id = Column(UUID(as_uuid=True), ForeignKey("events.id"), nullable=False)
     ticket_type_id = Column(UUID(as_uuid=True), ForeignKey("ticket_types.id"), nullable=False)
     payment_id = Column(UUID(as_uuid=True), ForeignKey("payments.id"), nullable=False)
+    purchase_id = Column(UUID(as_uuid=True), ForeignKey("purchases.id"), nullable=False)
     
     # Relationships
     user = relationship("User", foreign_keys=[user_id], back_populates="tickets")
     event = relationship("Event", back_populates="tickets")
     ticket_type = relationship("TicketType", back_populates="tickets")
     payment = relationship("Payment", back_populates="tickets")
+    purchase = relationship("Purchase", back_populates="tickets")
     marketplace_listing = relationship("MarketplaceListing", back_populates="ticket", uselist=False)
     validations = relationship("Validation", back_populates="ticket")
     transfers = relationship("TicketTransfer", foreign_keys="TicketTransfer.ticket_id", back_populates="ticket")
@@ -50,9 +52,17 @@ class Ticket(Base):
         return f"<Ticket(id='{self.id}', status='{self.status}')>"
     
     def generate_qr(self):
-        """Generate QR code for ticket"""
-        import secrets
-        self.qrCode = secrets.token_urlsafe(32)
+        """Generate QR code image for ticket"""
+        from app.utils.qr_generator import generate_qr_image, generate_ticket_qr_data
+        
+        # Generar el contenido del QR (JSON con info del ticket)
+        qr_data = generate_ticket_qr_data(
+            ticket_id=str(self.id),
+            event_id=str(self.event_id)
+        )
+        
+        # Generar la imagen del QR en base64
+        self.qrCode = generate_qr_image(qr_data)
         return self.qrCode
     
     def invalidate_qr(self):
