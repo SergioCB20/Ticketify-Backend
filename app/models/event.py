@@ -49,7 +49,7 @@ class Event(Base):
     # Relationships
     organizer = relationship("User", back_populates="organized_events")
     category = relationship("EventCategory", back_populates="events")
-    ticket_types = relationship("TicketType", back_populates="event", cascade="all, delete-orphan")
+    ticket_types = relationship("TicketType", back_populates="event", cascade="all, delete-orphan", lazy="joined")
     tickets = relationship("Ticket", back_populates="event")
     marketplace_listings = relationship("MarketplaceListing", back_populates="event")
     notifications = relationship("Notification", back_populates="event")
@@ -117,14 +117,42 @@ class Event(Base):
             "endDate": self.endDate.isoformat() if self.endDate else None,
             "venue": self.venue,
             "totalCapacity": self.totalCapacity,
-            "status": self.status.value,
-            "multimedia": self.multimedia if self.multimedia else [],
-            "availableTickets": self.available_tickets,
-            "isSoldOut": self.is_sold_out,
-            "minPrice": self.min_price,
-            "maxPrice": self.max_price,
-            "organizerId": str(self.organizer_id),
+            "status": self.status.value if hasattr(self.status, "value") else self.status,
+            "multimedia": self.multimedia or [],
+            "availableTickets": sum(
+                tt.remaining_quantity for tt in self.ticket_types if tt.is_active
+            ),
+            "isSoldOut": all(tt.is_sold_out for tt in self.ticket_types),
+            "organizerId": str(self.organizer_id) if self.organizer_id else None,
             "categoryId": str(self.category_id) if self.category_id else None,
+            "category": self.category.to_dict() if self.category else None,
+            "minPrice": min((float(tt.price) for tt in self.ticket_types if tt.is_active), default=0),
+            "maxPrice": max((float(tt.price) for tt in self.ticket_types if tt.is_active), default=0),
             "createdAt": self.createdAt.isoformat() if self.createdAt else None,
-            "updatedAt": self.updatedAt.isoformat() if self.updatedAt else None
+            "updatedAt": self.updatedAt.isoformat() if self.updatedAt else None,
+
+            # 👇 NUEVO: incluir lista de tipos de tickets
+            "ticket_types": [
+                {
+                    "id": str(tt.id),
+                    "name": tt.name,
+                    "description": tt.description,
+                    "price": float(tt.price) if tt.price else None,
+                    "original_price": float(tt.original_price) if tt.original_price else None,
+                    "quantity_available": tt.quantity_available,
+                    "sold_quantity": tt.sold_quantity,
+                    "remaining_quantity": (
+                        tt.remaining_quantity if hasattr(tt, "remaining_quantity") else
+                        (tt.quantity_available - tt.sold_quantity)
+                    ),
+                    "min_purchase": tt.min_purchase,
+                    "max_purchase": tt.max_purchase,
+                    "is_active": tt.is_active,
+                    "is_sold_out": (
+                        tt.is_sold_out if hasattr(tt, "is_sold_out") else
+                        (tt.sold_quantity >= tt.quantity_available)
+                    ),
+                }
+                for tt in self.ticket_types if tt is not None
+            ],
         }

@@ -10,6 +10,7 @@ from app.repositories.event_repository import EventRepository
 from app.schemas.event import (
     EventCreate, 
     EventUpdate, 
+    EventDetailResponse,
     EventResponse, 
     OrganizerEventResponse,
     EventSearchResponse
@@ -26,7 +27,7 @@ class EventService:
         self.event_repo = EventRepository(db)
     
     def get_event_by_id(self, event_id: str) -> EventResponse:
-        """Get a single event by ID"""
+        """Get a single event by ID, including ticket types."""
         event = self.event_repo.get_by_id(event_id)
         
         if not event:
@@ -34,10 +35,19 @@ class EventService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Evento no encontrado"
             )
-        
-        # Convert SQLAlchemy model to serializable dict using model helper
-        event_dict = event.to_dict() if hasattr(event, 'to_dict') else {}
-        return EventResponse(**event_dict)
+
+        print(f"🟢 EVENTO ENCONTRADO: {event.title}")
+        if hasattr(event, "ticket_types"):
+            print(f"🎟️ Ticket types encontrados: {len(event.ticket_types)}")
+            for tt in event.ticket_types:
+                print(f"➡️ {tt.name} | precio: {tt.price} | activo: {tt.is_active}")
+
+        # ✅ Convertimos manualmente el modelo SQLAlchemy a dict
+        event_dict = event.to_dict()
+
+        # ✅ Retornamos un modelo Pydantic EventDetailResponse
+        return EventDetailResponse(**event_dict)
+
     
     def get_all_events(
         self, 

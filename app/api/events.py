@@ -124,14 +124,8 @@ async def create_event(
 
 
 @router.get("/{event_id}", response_model=EventDetailResponse)
-async def get_event(
-    event_id: UUID,  # Usando UUID para validación
-    event_service: EventService = Depends(get_event_service)
-):
-    """
-    Obtener detalles de un evento específico por su ID.
-    """
-    # El servicio maneja la lógica de "no encontrado" (404)
+def get_event(event_id: UUID, db: Session = Depends(get_db)):
+    event_service = EventService(db)
     return event_service.get_event_by_id(event_id)
 
 

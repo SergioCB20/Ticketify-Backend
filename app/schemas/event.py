@@ -93,16 +93,6 @@ class EventResponse(BaseModel):
     class Config:
         from_attributes = True
 
-class EventDetailResponse(EventResponse):
-    """Schema de respuesta detallado que incluye info del organizador y categoría"""
-    organizer: Optional[OrganizerInfo] = None
-    category: Optional[CategoryInfo] = None
-    
-    class Config:
-        orm_mode = True
-        from_attributes = True
-        allow_population_by_field_name = True
-
 class EventListResponse(BaseModel):
     """Schema de respuesta para lista de eventos paginada"""
     events: List[EventResponse]
@@ -281,3 +271,44 @@ class EventCategoryResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+# =========================================================
+# 🎟️ Ticket Types Schema
+# =========================================================
+class TicketTypeResponse(BaseModel):
+    id: UUID
+    name: str
+    description: Optional[str] = None
+    price: float
+    original_price: Optional[float] = None
+    quantity_available: int
+    sold_quantity: int
+    remaining_quantity: int
+    min_purchase: int
+    max_purchase: int
+    is_active: bool
+    is_sold_out: bool
+
+    class Config:
+        from_attributes = True
+
+
+
+# =========================================================
+# 🧾 Event Detail Schema (extendido con ticket_types)
+# =========================================================
+class EventDetailResponse(EventResponse):
+    """
+    Respuesta detallada de evento con tipos de tickets incluidos.
+    """
+    organizer: Optional[OrganizerInfo] = None
+    category: Optional[CategoryInfo] = None
+
+    # 👇 Nuevo campo
+    ticket_types: List[TicketTypeResponse] = Field(default_factory=list)
+
+    class Config:
+        orm_mode = True
+        from_attributes = True
+        allow_population_by_field_name = True

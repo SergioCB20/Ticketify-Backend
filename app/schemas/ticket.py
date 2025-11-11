@@ -12,6 +12,7 @@ class TicketTypeSimpleResponse(BaseModel):
         from_attributes = True
         populate_by_name = True
 
+
 class MyTicketResponse(BaseModel):
     id: UUID
     price: float
