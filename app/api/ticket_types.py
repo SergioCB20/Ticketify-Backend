@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from uuid import UUID
 
-from app.core.dependencies import get_db
+from app.core.database import get_db
 from app.services.ticket_type_service import TicketTypeService
 from app.schemas.ticket_type import (
     TicketTypeResponse,
@@ -60,7 +60,8 @@ def create_ticket_type(
 ):
     """
     Crear un nuevo tipo de entrada para un evento.
-    Requiere permisos de organizador del evento.
+    
+    Valida que la suma de capacidades no supere la capacidad total del evento.
     """
     return ticket_type_service.create_ticket_type(event_id, ticket_type_data)
 
@@ -90,7 +91,6 @@ def update_ticket_type(
 ):
     """
     Actualizar un tipo de entrada existente.
-    Requiere permisos de organizador del evento.
     """
     return ticket_type_service.update_ticket_type(ticket_type_id, ticket_type_data)
 
@@ -116,7 +116,6 @@ def delete_ticket_type(
     """
     Eliminar un tipo de entrada.
     No se puede eliminar si ya se han vendido tickets de este tipo.
-    Requiere permisos de organizador del evento.
     """
     ticket_type_service.delete_ticket_type(ticket_type_id)
     return None

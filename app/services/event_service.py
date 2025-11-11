@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.repositories.event_repository import EventRepository
 from app.schemas.event import EventCreate, EventUpdate, EventResponse, EventListResponse
@@ -26,7 +26,7 @@ class EventService:
             )
         
         # Validate start date is in the future
-        if event_data.startDate <= datetime.utcnow():
+        if event_data.startDate <= datetime.now(timezone.utc):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="La fecha de inicio debe ser en el futuro"

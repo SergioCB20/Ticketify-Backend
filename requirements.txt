@@ -41,3 +41,5 @@ python-multipart==0.0.6
 
 # Additional utilities
 uuid==1.30
+requests==2.31.0
+colorama==0.4.6
