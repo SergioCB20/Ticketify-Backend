@@ -1,75 +1,147 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy import select, func, exists  # Asegúrate de importar exists
-from typing import List
+from fastapi import APIRouter, Depends, Query, HTTPException, status
+from sqlalchemy.orm import Session, joinedload
+from uuid import UUID
+from typing import Any, Dict, List
 
-from app.core.database import get_db
-from app.core.dependencies import get_current_active_user
+from app.core.dependencies import get_db, get_current_user  # usamos el mismo dep que ya te funciona
 from app.models.user import User
-from app.models.ticket import Ticket, TicketStatus
-from app.models.marketplace_listing import MarketplaceListing, ListingStatus
-from app.schemas.ticket import MyTicketResponse
+from app.models.ticket import Ticket
+from app.models.event import Event
 
-router = APIRouter(prefix="/tickets", tags=["Tickets"])
+# Marketplace (puede no existir en algunas ramas)
+try:
+    from app.models.marketplace_listing import MarketplaceListing, ListingStatus
+    MARKETPLACE_ENABLED = True
+except Exception:
+    MARKETPLACE_ENABLED = False
+
+router = APIRouter(prefix="/tickets", tags=["tickets"])
+
+
+def _get_attr(obj, *names, default=None):
+    """Lee atributo tolerante a snake/camel: purchase_date vs purchaseDate, etc."""
+    for n in names:
+        if hasattr(obj, n):
+            return getattr(obj, n)
+    return default
+
 
 @router.get("/my-tickets")
-async def get_my_tickets(
+def get_my_tickets(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
-    Obtiene todos los tickets activos (o en reventa) que posee el usuario actual.
+    Versión unificada: usa la lógica del 'main' (tickets del usuario + flag de marketplace),
+    pero devuelve el shape que ya consume tu frontend: { items, total, page, page_size }.
     """
-    
-    # --- INICIO DE LA CORRECCIÓN ---
+    # Trae los tickets del usuario con event y ticket_type (como en main)
+    tickets: List[Ticket] = (
+        db.query(Ticket)
+        .filter(Ticket.user_id == current_user.id)
+        .all()
+    )
 
-    # 1. Obtener todos los tickets del usuario
-    tickets = db.query(Ticket).filter(
-        Ticket.user_id == current_user.id
-    ).options(
-        joinedload(Ticket.event),
-        joinedload(Ticket.ticket_type)
-    ).order_by(Ticket.purchaseDate.desc()).all()
-    
-    # 2. Para cada ticket, verificar si está listado en el marketplace
-    response = []
-    for ticket in tickets:
-        # Buscar un listing ACTIVO para este ticket
-        active_listing = db.query(MarketplaceListing).filter(
-            MarketplaceListing.ticket_id == ticket.id,
-            MarketplaceListing.status == ListingStatus.ACTIVE
-        ).first()
-        
-        is_listed = active_listing is not None
-        listing_id = str(active_listing.id) if active_listing else None
-        
-        print(f"🔍 Processing ticket {ticket.id}: is_listed={is_listed}, listing_id={listing_id}")
-        
-        # Construir el diccionario de respuesta
-        ticket_dict = {
-            'id': str(ticket.id),
-            'price': float(ticket.price),
-            'purchaseDate': ticket.purchaseDate.isoformat() if ticket.purchaseDate else None,
-            'status': ticket.status.value,
-            'isValid': ticket.isValid,
-            'qrCode': ticket.qrCode if ticket.qrCode else None,  # Agregar el QR code
-            'event': {
-                'id': str(ticket.event.id),
-                'title': ticket.event.title,
-                'startDate': ticket.event.startDate.isoformat() if ticket.event.startDate else None,
-                'venue': ticket.event.venue
+    items: List[Dict[str, Any]] = []
+    for t in tickets:
+        e = _get_attr(t, "event")
+        tt = _get_attr(t, "ticket_type", "ticketType")
+
+        # ¿Está listado en marketplace? (solo si el modelo existe)
+        is_listed = False
+        listing_id = None
+        if MARKETPLACE_ENABLED:
+            active_listing = (
+                db.query(MarketplaceListing)
+                .filter(
+                    MarketplaceListing.ticket_id == t.id,
+                    MarketplaceListing.status == ListingStatus.ACTIVE,
+                )
+                .first()
+            )
+            if active_listing:
+                is_listed = True
+                listing_id = str(active_listing.id)
+
+        multimedia = _get_attr(e, "multimedia") or []
+        cover = multimedia[0] if isinstance(multimedia, (list, tuple)) and multimedia else None
+
+        status_val = _get_attr(t, "status")
+        status_val = getattr(status_val, "value", status_val)  # enum o str
+
+        item = {
+            "id": str(t.id),
+            "price": _get_attr(t, "price"),
+            "code": _get_attr(t, "qr_code", "qrCode", "code"),
+            "purchase_date": _get_attr(t, "purchase_date", "purchaseDate"),
+            "status": status_val,
+            "is_valid": _get_attr(t, "isValid", "is_valid", default=True),
+            "event": {
+                "id": str(_get_attr(e, "id")) if e else None,
+                "title": _get_attr(e, "title") if e else None,
+                "start_date": _get_attr(e, "start_date", "startDate") if e else None,
+                "venue": _get_attr(e, "venue") if e else None,
+                "cover_image": cover,
             },
-            'ticketType': {
-                'id': str(ticket.ticket_type.id),
-                'name': ticket.ticket_type.name
+            "ticketType": {
+                "id": str(_get_attr(tt, "id")) if tt else None,
+                "name": _get_attr(tt, "name") if tt else None,
             },
-            'isListed': is_listed,
-            'listingId': listing_id
+            "isListed": is_listed,
+            "listingId": listing_id,
         }
-        response.append(ticket_dict)
+        items.append(item)
 
-    print(f"📦 Returning {len(response)} tickets")
-    if response:
-        print(f"🔍 First ticket: {response[0]}")
-    return response
-    # --- FIN DE LA CORRECCIÓN ---
+    total = len(items)
+    # Mantiene el contrato { items, total, page, page_size } que ya usa tu front
+    # (si quieres paginar de verdad, aplica slicing aquí)
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
+
+
+@router.get("/my-tickets/{ticket_id}")
+def get_my_ticket(
+    ticket_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Detalle de un ticket del usuario (mantiene tu endpoint original).
+    """
+    row = (
+        db.query(Ticket, Event)
+        .join(Event, Event.id == Ticket.event_id)
+        .filter(Ticket.id == ticket_id, Ticket.user_id == current_user.id)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
+
+    t, e = row
+    multimedia = _get_attr(e, "multimedia") or []
+    cover = None
+    try:
+        cover = multimedia[0] if isinstance(multimedia, (list, tuple)) and multimedia else None
+    except Exception:
+        cover = None
+
+    status_val = _get_attr(t, "status")
+    status_val = getattr(status_val, "value", status_val)
+
+    return {
+        "id": str(t.id),
+        "price": _get_attr(t, "price"),
+        "qr_code": _get_attr(t, "qr_code", "qrCode", "code"),
+        "purchase_date": _get_attr(t, "purchase_date", "purchaseDate"),
+        "status": status_val,
+        "event": {
+            "id": str(e.id),
+            "title": e.title,
+            "start_date": _get_attr(e, "start_date", "startDate"),
+            "end_date": _get_attr(e, "end_date", "endDate"),
+            "venue": e.venue,
+            "multimedia": multimedia,
+            "cover_image": cover,
+        },
+    }
