@@ -1,8 +1,16 @@
-import json
-from typing import List
+from pathlib import Path
+from dotenv import load_dotenv
 
-from pydantic import field_validator
-from pydantic_settings import BaseSettings
+# 👇 Calcula la RUTA ABSOLUTA al .env (raíz del proyecto backend)
+ROOT_DIR = Path(__file__).resolve().parents[2]
+DOTENV_PATH = ROOT_DIR / ".env"
+# Carga explícitamente el .env ANTES de construir Settings
+load_dotenv(DOTENV_PATH, override=True)
+
+import json
+from pydantic import field_validator, SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import List
 
 
 class Settings(BaseSettings):
@@ -33,7 +41,7 @@ class Settings(BaseSettings):
     
     # MercadoPago OAuth
     MERCADOPAGO_CLIENT_ID: str
-    MERCADOPAGO_CLIENT_SECRET: str
+    MERCADOPAGO_CLIENT_SECRET: SecretStr
     MERCADOPAGO_REDIRECT_URI: str
     MERCADOPAGO_ENVIRONMENT: str = "sandbox"
     
@@ -59,8 +67,16 @@ class Settings(BaseSettings):
     DEFAULT_PAGE_SIZE: int = 20
     MAX_PAGE_SIZE: int = 100
 
+    model_config = SettingsConfigDict(
+        env_file=str(DOTENV_PATH),
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore",
+    )
+
     # Validators para listas desde .env
     @field_validator("ALLOWED_HOSTS", "ALLOWED_FILE_TYPES", mode="before")
+    @classmethod
     def parse_list(cls, v):
         if isinstance(v, str):
             v = v.strip()
@@ -73,6 +89,7 @@ class Settings(BaseSettings):
         return v
     
     @field_validator("MERCADOPAGO_REDIRECT_URI", mode="before")
+    @classmethod
     def expand_redirect_uri(cls, v, info):
         """Expandir ${NGROK_URL} en MERCADOPAGO_REDIRECT_URI"""
         if isinstance(v, str) and "${NGROK_URL}" in v:
@@ -81,10 +98,6 @@ class Settings(BaseSettings):
             return v.replace("${NGROK_URL}", ngrok_url)
         return v
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
 
 
 # Instancia global

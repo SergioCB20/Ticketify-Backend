@@ -41,14 +41,6 @@ def get_my_tickets(
     tickets: List[Ticket] = (
         db.query(Ticket)
         .filter(Ticket.user_id == current_user.id)
-        .options(
-            joinedload(Ticket.event),
-            joinedload(getattr(Ticket, "ticket_type", None))  # por si existe relación
-        )
-        # ordena por purchaseDate si existe; si no, created_at; si no, id
-        .order_by(
-            _get_attr(Ticket, "purchase_date", "purchaseDate", "created_at", "createdAt", "id")
-        )
         .all()
     )
 
@@ -74,11 +66,7 @@ def get_my_tickets(
                 listing_id = str(active_listing.id)
 
         multimedia = _get_attr(e, "multimedia") or []
-        cover = None
-        try:
-            cover = multimedia[0] if isinstance(multimedia, (list, tuple)) and multimedia else None
-        except Exception:
-            cover = None
+        cover = multimedia[0] if isinstance(multimedia, (list, tuple)) and multimedia else None
 
         status_val = _get_attr(t, "status")
         status_val = getattr(status_val, "value", status_val)  # enum o str
@@ -91,10 +79,10 @@ def get_my_tickets(
             "status": status_val,
             "is_valid": _get_attr(t, "isValid", "is_valid", default=True),
             "event": {
-                "id": str(_get_attr(e, "id")),
-                "title": _get_attr(e, "title"),
-                "start_date": _get_attr(e, "start_date", "startDate"),
-                "venue": _get_attr(e, "venue"),
+                "id": str(_get_attr(e, "id")) if e else None,
+                "title": _get_attr(e, "title") if e else None,
+                "start_date": _get_attr(e, "start_date", "startDate") if e else None,
+                "venue": _get_attr(e, "venue") if e else None,
                 "cover_image": cover,
             },
             "ticketType": {

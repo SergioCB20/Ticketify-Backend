@@ -79,7 +79,7 @@ class Purchase(Base):
     event = relationship("Event", back_populates="purchases")
     ticket_type = relationship("TicketType")
     promotion = relationship("Promotion", back_populates="purchases")
-    tickets = relationship("Ticket", back_populates="purchase", cascade="all, delete-orphan")
+    #tickets = relationship("Ticket", back_populates="purchase", cascade="all, delete-orphan")
     payment = relationship("Payment")
     def __repr__(self):
         return f"<Purchase(id='{self.id}', status='{self.status}', total='{self.total_amount}')>"
