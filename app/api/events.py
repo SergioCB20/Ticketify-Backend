@@ -1,16 +1,18 @@
 # events_router.py (Versión Unificada)
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
+import base64
 
 from app.core.dependencies import get_db, get_current_user
 from app.services.event_service import EventService  # Usando la capa de servicio
 from app.models.user import User
-from app.models.event import EventStatus
+from app.models.event import EventStatus, Event
 from app.models.ticket import Ticket
 from app.models.event import EventStatus
 
@@ -111,6 +113,36 @@ async def create_event(
     return event_service.create_event(event_data, current_user.id)
 
 
+@router.post("/{event_id}/upload-photo", response_model=EventResponse)
+async def upload_event_photo(
+    event_id: UUID,
+    photo: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    event_service: EventService = Depends(get_event_service)
+):
+    """
+    Subir foto para un evento existente. Requiere autenticación.
+    Solo el organizador puede subir la foto.
+    """
+    # Validar tipo de archivo
+    if not photo.content_type or not photo.content_type.startswith('image/'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo debe ser una imagen"
+        )
+    
+    # Validar tamaño (máximo 5MB)
+    contents = await photo.read()
+    if len(contents) > 5 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La imagen no puede exceder 5MB"
+        )
+    
+    # Subir la foto
+    return event_service.upload_event_photo(event_id, contents, current_user.id)
+
+
 @router.get("/{event_id}", response_model=EventDetailResponse)
 async def get_event(
     event_id: UUID,  # Usando UUID para validación
@@ -121,6 +153,32 @@ async def get_event(
     """
     # El servicio maneja la lógica de "no encontrado" (404)
     return event_service.get_event_by_id(event_id)
+
+
+@router.get("/{event_id}/photo")
+async def get_event_photo(
+    event_id: UUID,
+    event_service: EventService = Depends(get_event_service),
+    db: Session = Depends(get_db)
+):
+    """
+    Obtener la foto de un evento.
+    """
+    event = db.query(Event).filter(Event.id == event_id).first()
+    
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evento no encontrado"
+        )
+    
+    if not event.photo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Este evento no tiene foto"
+        )
+    
+    return Response(content=event.photo, media_type="image/jpeg")
 
 
 @router.put("/{event_id}", response_model=EventResponse)

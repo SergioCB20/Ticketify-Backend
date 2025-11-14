@@ -203,7 +203,7 @@ class EventService:
                 detail="La fecha de fin debe ser posterior a la fecha de inicio"
             )
         
-        if event_data.startDate < datetime.now():
+        if event_data.startDate.astimezone() < datetime.now().astimezone():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="La fecha de inicio no puede ser en el pasado"
@@ -447,6 +447,33 @@ class EventService:
 
         return event_responses
     
+    def upload_event_photo(self, event_id: str, photo_data: bytes, user_id: uuid.UUID) -> EventResponse:
+        """Upload photo for an event (only by organizer)"""
+        event = self.event_repo.get_by_id(event_id)
+        
+        if not event:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Evento no encontrado"
+            )
+        
+        # Verify organizer
+        if str(event.organizer_id) != str(user_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No tienes permisos para subir foto a este evento"
+            )
+        
+        # Save photo
+        event.photo = photo_data
+        self.db.commit()
+        self.db.refresh(event)
+        
+        event_dict = event.to_dict() if hasattr(event, 'to_dict') else {}
+        # Add photo URL
+        event_dict['photoUrl'] = f"/events/{event_id}/photo" if event.photo else None
+        return EventResponse(**event_dict)
+    
     def get_organizer_events(
         self,
         organizer_id: uuid.UUID,
@@ -474,7 +501,7 @@ class EventService:
                     "totalTickets": total_capacity,
                     "soldTickets": sold,
                     "status": event.status.value if hasattr(event.status, "value") else event.status,
-                    "imageUrl": (event.multimedia[0] if getattr(event, "multimedia", None) and len(event.multimedia) > 0 else None)
+                    "imageUrl": f"/events/{event.id}/photo" if event.photo else None
                 }
 
                 organizer_events.append(OrganizerEventResponse(**ev))

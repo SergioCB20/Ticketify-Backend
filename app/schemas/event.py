@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
@@ -14,7 +14,6 @@ class EventBase(BaseModel):
     endDate: datetime
     venue: str = Field(..., min_length=1, max_length=200)
     totalCapacity: int = Field(..., gt=0)
-    multimedia: Optional[List[str]] = Field(default_factory=list)
     category_id: Optional[UUID] = None
 
     @validator('endDate')
@@ -39,7 +38,6 @@ class EventUpdate(BaseModel):
     endDate: Optional[datetime] = None
     venue: Optional[str] = Field(None, min_length=1, max_length=200)
     totalCapacity: Optional[int] = Field(None, gt=0)
-    multimedia: Optional[List[str]] = None
     category_id: Optional[UUID] = None
     status: Optional[EventStatus] = None
 
@@ -78,7 +76,7 @@ class EventResponse(BaseModel):
     venue: str
     totalCapacity: int
     status: str
-    multimedia: Optional[List[str]] = []
+    photoUrl: Optional[str] = None  # URL para obtener la foto
     availableTickets: int
     isSoldOut: bool
     organizerId: UUID

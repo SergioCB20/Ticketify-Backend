@@ -45,6 +45,10 @@ class EventRepository:
             .filter(Event.id == event_id)
             .first()
         )
+    
+    def get_event_by_id(self, event_id: UUID) -> Optional[Event]:
+        """Alias method for get_by_id to maintain compatibility"""
+        return self.get_by_id(event_id)
 
     def update_event(self, event_id: UUID, event_data: EventUpdate) -> Optional[Event]:
        
