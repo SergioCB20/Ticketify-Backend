@@ -60,6 +60,7 @@ class EventRepository:
         if not event:
             return None
 
+        # Solo actualiza lo que venga en el body
         update_data = event_data.dict(exclude_unset=True)
         for field, value in update_data.items():
             if hasattr(event, field):

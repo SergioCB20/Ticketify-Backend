@@ -222,41 +222,63 @@ class EventService:
         event_id: UUID,
         event_data: EventUpdate,
         user_id: UUID,
-        is_admin: bool = False
+        is_admin: bool = False,
     ) -> EventResponse:
-        """Actualiza un evento (organizador o admin)"""
-        event = self.event_repo.get_event_by_id(event_id)
+        event = (
+            self.db.query(Event)
+            .filter(Event.id == event_id)
+            .first()
+        )
         if not event:
             raise HTTPException(status_code=404, detail="Evento no encontrado")
 
         if not is_admin and event.organizer_id != user_id:
             raise HTTPException(status_code=403, detail="No autorizado")
 
-        if event_data.startDate and event_data.endDate:
-            if event_data.endDate <= event_data.startDate:
-                raise HTTPException(status_code=400, detail="Fechas inválidas")
+        # datos a actualizar (solo los campos enviados)
+        update_data = event_data.dict(exclude_unset=True)
 
-        updated = self.event_repo.update_event(event_id, event_data)
-        
-        return self._event_to_response(updated)
+        # validar fechas si vienen en el payload
+        start_date = update_data.get("startDate") or update_data.get("start_date")
+        end_date = update_data.get("endDate") or update_data.get("end_date")
+        if start_date and end_date and end_date <= start_date:
+            raise HTTPException(status_code=400, detail="Fechas inválidas")
 
+        for field, value in update_data.items():
+            if hasattr(event, field):
+                setattr(event, field, value)
+
+        event.updatedAt = datetime.now(timezone.utc)
+
+        self.db.commit()
+        self.db.refresh(event)
+
+        return self._event_to_response(event)
     # =========================================================
     # 🔹 Eliminar Evento
     # =========================================================
-    def delete_event(self, event_id: UUID, user_id: UUID, is_admin: bool = False) -> MessageResponse:
-        """Elimina un evento (solo organizador o admin)"""
+    def delete_event(
+            self,
+            event_id: UUID,
+            user_id: UUID,
+            is_admin: bool = False,
+        ) -> MessageResponse:
+        # buscar evento
         event = self.event_repo.get_event_by_id(event_id)
         if not event:
             raise HTTPException(status_code=404, detail="Evento no encontrado")
 
+        # solo organizador o admin
         if not is_admin and event.organizer_id != user_id:
-            raise HTTPException(status_code=403, detail="No autorizado")
+            raise HTTPException(
+                status_code=403,
+                detail="No estás autorizado para eliminar este evento",
+            )
+            
+        self.db.delete(event)
+        self.db.commit()
 
-        if event.available_tickets < event.totalCapacity:
-            raise HTTPException(status_code=400, detail="No se puede eliminar un evento con ventas")
-
-        self.event_repo.delete_event(event_id)
-        return MessageResponse(message="Evento eliminado exitosamente")
+        return MessageResponse(message="Evento eliminado correctamente")
 
     # =========================================================
     # 🔹 Cambiar Estado
@@ -311,7 +333,7 @@ class EventService:
             raise HTTPException(status_code=404, detail="Evento no encontrado")
 
         event.photo = photo_bytes
-        event.updatedAt = datetime.now(timezone.utc)
+        event.updatedAt = datetime.now(timezone.utc)  
         self.db.commit()
         self.db.refresh(event)
         return event

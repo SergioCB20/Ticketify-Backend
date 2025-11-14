@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Response
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from uuid import UUID
@@ -17,7 +17,7 @@ from app.schemas.event import (
     MessageResponse,
     EventStatusUpdate
 )
-from app.models.event import EventStatus
+from app.models.event import EventStatus, Event
 from app.models.user import User
 
 
@@ -169,31 +169,27 @@ def get_event(event_id: UUID, db: Session = Depends(get_db)):
 # =========================================================
 # 🔹 Actualizar evento
 # =========================================================
-@router.put("/{event_id}", response_model=EventResponse)
+
+@router.put("/{event_id}")
 async def update_event(
     event_id: UUID,
     event_data: EventUpdate,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    """
-    Update event
-    
-    Only the event organizer or an admin can update the event.
-    Only provided fields will be updated.
-    """
     event_service = EventService(db)
-    
-    # Check if user is admin
+
     is_admin = any(role.name == "ADMIN" for role in current_user.roles) if current_user.roles else False
-    
-    return event_service.update_event(
+
+    updated = event_service.update_event(
         event_id=event_id,
         event_data=event_data,
         user_id=current_user.id,
-        is_admin=is_admin
+        is_admin=is_admin,
     )
 
+    # EventService.update_event ya devuelve un EventResponse (BaseModel)
+    return updated
 # =========================================================
 # 🔹 Cambiar estado de evento
 # =========================================================
@@ -243,28 +239,44 @@ async def delete_event(
         is_admin=is_admin
     )
 
+
+@router.post("/{event_id}/delete", response_model=MessageResponse)
+async def delete_event_post(
+    event_id: UUID,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete event vía POST (alternativa al DELETE)
+    """
+    event_service = EventService(db)
+
+    is_admin = any(role.name == "ADMIN" for role in current_user.roles) if current_user.roles else False
+
+    return event_service.delete_event(
+        event_id=event_id,
+        user_id=current_user.id,
+        is_admin=is_admin
+    )
+
+
 @router.get("/{event_id}/photo")
 async def get_event_photo(
     event_id: UUID,
     db: Session = Depends(get_db)
 ):
     """
-    Obtener la foto de un evento como respuesta binaria.
+    Devuelve la foto del evento como imagen binaria.
+    Se usa la URL construida en Event.to_dict(): /events/{id}/photo
     """
-    from fastapi.responses import Response
-    
-    event_service = EventService(db)
-    event = event_service.event_repo.get_event_by_id(event_id)
-    
-    if not event:
-        raise HTTPException(status_code=404, detail="Evento no encontrado")
-    
-    if not event.photo:
-        raise HTTPException(status_code=404, detail="El evento no tiene foto")
-    
-    # Retornar la imagen como bytes
+    event = db.query(Event).filter(Event.id == event_id).first()
+
+    if not event or not event.photo:
+        raise HTTPException(status_code=404, detail="Foto no encontrada")
+
+    # Asumimos JPEG; cambia a image/png si guardas PNG, etc.
     return Response(content=event.photo, media_type="image/jpeg")
-    
+
 @router.post("/{event_id}/upload-photo", response_model=EventResponse)
 async def upload_event_photo(
     event_id: UUID,
