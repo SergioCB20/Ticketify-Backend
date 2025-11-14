@@ -4,7 +4,7 @@ Importa todos los modelos de la aplicación
 """
 
 # Core models
-from app.models.user import User, UserRole, AdminRole, user_roles
+from app.models.user import User, UserRole, AdminRole, user_roles, DocumentType, Gender
 from app.models.role import Role, role_permissions
 from app.models.permission import Permission
 
@@ -50,6 +50,8 @@ __all__ = [
     "UserRole",
     "AdminRole",
     "user_roles",
+    "DocumentType",
+    "Gender",
     "Role",
     "role_permissions",
     "Permission",

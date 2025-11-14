@@ -1,6 +1,15 @@
+from pathlib import Path
+from dotenv import load_dotenv
+
+BASE_DIR = Path(__file__).resolve().parent.parent   # .../Ticketify-Backend/app -> sube a .../Ticketify-Backend
+DOTENV_PATH = BASE_DIR / ".env"
+load_dotenv(DOTENV_PATH, override=True)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 # Core configuration
 from app.core.config import settings
@@ -8,7 +17,7 @@ from app.api import api_router
 from app.core.database import Base, engine
 
 # Crear tablas si no existen
-#Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
 # Create FastAPI app
 app = FastAPI(
@@ -27,6 +36,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files for uploads
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Include API routes
 app.include_router(api_router)

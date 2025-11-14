@@ -26,6 +26,7 @@ class Purchase(Base):
     
     # Primary key
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+
     
     # Purchase details
     total_amount = Column(Numeric(10, 2), nullable=False)
@@ -72,14 +73,14 @@ class Purchase(Base):
     event_id = Column(UUID(as_uuid=True), ForeignKey("events.id"), nullable=False)
     ticket_type_id = Column(UUID(as_uuid=True), ForeignKey("ticket_types.id"), nullable=False)
     promotion_id = Column(UUID(as_uuid=True), ForeignKey("promotions.id"), nullable=True)
-    
+    payment_id = Column(UUID(as_uuid=True), ForeignKey("payments.id"), nullable=True)
     # Relationships
     user = relationship("User", back_populates="purchases")
     event = relationship("Event", back_populates="purchases")
     ticket_type = relationship("TicketType")
     promotion = relationship("Promotion", back_populates="purchases")
     tickets = relationship("Ticket", back_populates="purchase", cascade="all, delete-orphan")
-    
+    payment = relationship("Payment")
     def __repr__(self):
         return f"<Purchase(id='{self.id}', status='{self.status}', total='{self.total_amount}')>"
     

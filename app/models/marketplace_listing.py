@@ -74,7 +74,10 @@ class MarketplaceListing(Base):
             return False
             
         return True
-    
+    @property
+    def ticket_type_id(self):
+        return self.ticket.ticket_type.id if self.ticket and self.ticket.ticket_type else None
+
     @property
     def discount_percentage(self):
         """Calculate discount percentage from original price"""

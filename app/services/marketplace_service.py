@@ -96,11 +96,14 @@ class MarketplaceService:
             event_id=original_ticket.event_id,
             ticket_type_id=original_ticket.ticket_type_id,
             payment_id=payment_id, # El ID del NUEVO pago
-            purchase_id=original_ticket.purchase_id,
-            # Generar un nuevo QR es fundamental
-            qrCode=f"qr_new_{uuid.uuid4()}" # Llama a tu función real de QR
+            purchase_id=original_ticket.purchase_id
         )
         self.db.add(new_ticket)
+        self.db.flush()  # Asegurar que el ticket tenga ID antes de generar QR
+        
+        # Generar QR visual para el nuevo ticket
+        new_ticket.generate_qr()
+        print(f"✅ Nuevo QR generado para ticket {new_ticket.id}: {new_ticket.qrCode[:50]}...")  # Log temporal
         
         # 5. Registrar la transferencia en el historial
         transfer_log = TicketTransfer(
