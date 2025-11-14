@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
@@ -14,7 +14,7 @@ class EventCreate(BaseModel):
     endDate: datetime = Field(..., description="Event end date and time")
     venue: str = Field(..., min_length=3, max_length=200, description="Event venue/location")
     totalCapacity: int = Field(..., gt=0, description="Total capacity of the event")
-    multimedia: Optional[List[str]] = Field(default=[], description="List of image/video URLs")
+    #multimedia: Optional[List[str]] = Field(default=[], description="List of image/video URLs")
     category_id: Optional[UUID] = Field(None, description="Event category ID")
 
     @validator('endDate')
@@ -32,7 +32,7 @@ class EventCreate(BaseModel):
                 "endDate": "2025-11-15T23:00:00",
                 "venue": "Estadio Nacional, Lima",
                 "totalCapacity": 5000,
-                "multimedia": ["https://example.com/image1.jpg"],
+                #"multimedia": ["https://example.com/image1.jpg"],
                 "category_id": "123e4567-e89b-12d3-a456-426614174000"
             }
         }
@@ -46,7 +46,7 @@ class EventUpdate(BaseModel):
     endDate: Optional[datetime] = None
     venue: Optional[str] = Field(None, min_length=3, max_length=200)
     totalCapacity: Optional[int] = Field(None, gt=0)
-    multimedia: Optional[List[str]] = None
+    #multimedia: Optional[List[str]] = None
     category_id: Optional[UUID] = None
     class Config:
         json_schema_extra = {
@@ -80,6 +80,8 @@ class EventResponse(BaseModel):
     createdAt: datetime
     updatedAt: datetime
 
+    ticket_types: List[Any] = Field(default_factory=list)
+    
     class Config:
         from_attributes = True
 
@@ -140,7 +142,7 @@ class EventSimpleResponse(BaseModel):
     title: str
     startDate: datetime
     venue: str
-    multimedia: Optional[List[str]] = None
+    #multimedia: Optional[List[str]] = None
 
     class Config:
         from_attributes = True

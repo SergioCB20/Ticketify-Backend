@@ -39,7 +39,7 @@ class EventService:
             )
         
         # Validate start date is in the future
-        if event_data.startDate <= datetime.now(timezone.utc):
+        if event_data.startDate.astimezone(timezone.utc) <= datetime.now(timezone.utc):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="La fecha de inicio debe ser en el futuro"
@@ -104,7 +104,7 @@ class EventService:
 
         events = self.event_repo.get_all(skip=skip, limit=limit, status=event_status)
         now = datetime.now(timezone.utc)
-        upcoming = [e for e in events if getattr(e, "endDate", None) and e.endDate > now]
+        upcoming = [e for e in events if getattr(e, "endDate", None) and e.endDate.astimezone(timezone.utc) > now]
                 
         return [self._event_to_response(e) for e in upcoming]
     
@@ -114,7 +114,8 @@ class EventService:
         Devuelve los eventos pertenecientes al organizador autenticado.
         Usa la función correcta del repositorio.
         """
-        return self.event_repo.get_events_by_organizer_id(organizer_id)
+        events = self.event_repo.get_events_by_organizer_id(organizer_id)
+        return [self._event_to_response(e) for e in events]
 
     def get_events_vigentes_by_organizer(self, organizer_id: UUID):
         events = self.event_repo.get_events_by_organizer_id(organizer_id)
@@ -124,7 +125,7 @@ class EventService:
 
         vigentes = [
             e for e in events
-            if e.status != EventStatus.CANCELLED and e.endDate >= now
+            if e.status != EventStatus.CANCELLED and e.endDate.astimezone(timezone.utc) >= now
         ]
 
         return vigentes
@@ -310,7 +311,7 @@ class EventService:
             raise HTTPException(status_code=404, detail="Evento no encontrado")
 
         event.photo = photo_bytes
-        event.updatedAt = datetime.now(datetime.timezone.utc)
+        event.updatedAt = datetime.now(timezone.utc)
         self.db.commit()
         self.db.refresh(event)
         return event
@@ -321,6 +322,41 @@ class EventService:
     # =========================================================
     def _event_to_response(self, event: Event) -> EventResponse:
         """Convierte modelo SQLAlchemy a esquema Pydantic"""
+        # Crear diccionario de categoría si existe
+        category_dict = None
+        if event.category:
+            category_dict = {
+                "id": str(event.category.id),
+                "name": event.category.name,
+                "slug": event.category.slug,
+                "description": event.category.description,
+                "icon": event.category.icon,
+                "colorCode": event.category.color,
+                "isActive": event.category.is_active,
+                "isFeatured": event.category.is_featured,
+                "sortOrder": event.category.sort_order
+            }
+        
+        # Construir la lista de tipos de ticket de forma imperativa antes del return
+        ticket_types_list = []
+        if getattr(event, "ticket_types", None):
+            for tt in event.ticket_types:
+                if tt is not None:
+                    ticket_types_list.append({
+                        "id": str(tt.id),
+                        "name": tt.name,
+                        "price": float(tt.price) if tt.price else None,
+                        "quantity_available": tt.quantity_available, # La clave que necesita el router
+                        "sold_quantity": tt.sold_quantity, # La clave que necesita el router
+                        
+                        # (Puedes añadir los otros campos del ticket aquí si los necesitas)
+                        "description": tt.description,
+                        "original_price": float(tt.original_price) if tt.original_price else None,
+                        "min_purchase": tt.min_purchase,
+                        "max_purchase": tt.max_purchase,
+                        "is_active": tt.is_active
+                    })
+
         return EventResponse(
             id=event.id,
             title=event.title,
@@ -330,13 +366,15 @@ class EventService:
             venue=event.venue,
             totalCapacity=event.totalCapacity,
             status=event.status.value,
+            photoUrl=f"/api/events/{event.id}/photo" if event.photo else None,
             availableTickets=getattr(event, "available_tickets", 0),
             isSoldOut=getattr(event, "is_sold_out", False),
             organizerId=event.organizer_id,
             categoryId=event.category_id,
-            createdAt=event.createdAt,
-            updatedAt=event.updatedAt,
+            category=category_dict,
             minPrice=event.min_price,
             maxPrice=event.max_price,
-            ticket_types=[tt.to_dict() for tt in event.ticket_types]
+            createdAt=event.createdAt,
+            updatedAt=event.updatedAt,
+            ticket_types=ticket_types_list
         )
