@@ -47,7 +47,7 @@ def require_role(allowed_roles: list[UserRole]):
     def role_checker(current_user: User = Depends(get_current_active_user)) -> User:
         # Check if user has any of the required roles through the Role relationship
         user_role_names = [role.name for role in current_user.roles]
-        
+        print(f"[DEBUG-ROLE] User: {current_user.email}, Roles found: {user_role_names}")
         # Convert UserRole enums to strings for comparison
         allowed_role_names = [role.value for role in allowed_roles]
         

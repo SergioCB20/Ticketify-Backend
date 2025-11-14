@@ -1,3 +1,10 @@
+from pathlib import Path
+from dotenv import load_dotenv
+
+BASE_DIR = Path(__file__).resolve().parent.parent   # .../Ticketify-Backend/app -> sube a .../Ticketify-Backend
+DOTENV_PATH = BASE_DIR / ".env"
+load_dotenv(DOTENV_PATH, override=True)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
