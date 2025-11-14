@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List
 from uuid import UUID
@@ -7,6 +7,8 @@ from app.schemas.promotion import PromotionResponse, PromotionCreate, PromotionU
 from app.services.promotion_service import PromotionService
 from app.core.dependencies import get_current_user
 from app.core.database import get_db
+from datetime import datetime, timezone
+from app.models.promotion import Promotion
 
 router = APIRouter(prefix="/promotions", tags=["Promotions"])
 
@@ -14,6 +16,45 @@ def get_event_service(db: Session = Depends(get_db)) -> PromotionService:
     """Dependencia para inyectar la capa de servicio de eventos"""
     return PromotionService(db)
 
+@router.get("/validate", tags=["Promotions"], include_in_schema=True, dependencies=[])
+def validate_promotion(
+    code: str = Query(..., description="Código de promoción"),
+    event_id: UUID = Query(..., description="ID del evento"),
+    db: Session = Depends(get_db)
+):
+    """
+    ✅ Endpoint público para validar códigos promocionales
+    (no requiere autenticación)
+    """
+
+    promo = db.query(Promotion).filter(
+        Promotion.code == code,
+        Promotion.start_date <= datetime.utcnow(),
+        Promotion.end_date >= datetime.utcnow(),
+    ).first()
+
+    if not promo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Código inválido o expirado"
+        )
+
+    if promo.event_id and str(promo.event_id) != str(event_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El código no aplica a este evento"
+        )
+
+    return {
+        "id": str(promo.id),
+        "code": promo.code,
+        "promotion_type": promo.promotion_type,
+        "discount_value": float(promo.discount_value),
+        "max_discount_amount": float(promo.max_discount_amount or 0),
+        "min_purchase_amount": float(promo.min_purchase_amount or 0),
+        "start_date": promo.start_date,
+        "end_date": promo.end_date,
+    }
 
 
 # =========================================================
@@ -164,58 +205,10 @@ def get_promotions_by_event(
     """
     try:
         promotions = promotion_service.get_by_event(event_id)
-        return promotions
+        return promotions or []
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
-from uuid import UUID
-from datetime import datetime
-from app.core.database import get_db
-from app.models.promotion import Promotion
-
-router = APIRouter(prefix="/promotions", tags=["Promotions"])
-
-@router.get("/validate", tags=["Promotions"], include_in_schema=True)
-def validate_promotion(
-    code: str = Query(..., description="Código de promoción"),
-    event_id: UUID = Query(..., description="ID del evento"),
-    db: Session = Depends(get_db)
-):
-    """
-    ✅ Endpoint público para validar códigos promocionales
-    (no requiere autenticación)
-    """
-
-    promo = db.query(Promotion).filter(
-        Promotion.code == code,
-        Promotion.start_date <= datetime.utcnow(),
-        Promotion.end_date >= datetime.utcnow(),
-    ).first()
-
-    if not promo:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Código inválido o expirado"
-        )
-
-    if promo.event_id and str(promo.event_id) != str(event_id):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El código no aplica a este evento"
-        )
-
-    return {
-        "id": str(promo.id),
-        "code": promo.code,
-        "promotion_type": promo.promotion_type,
-        "discount_value": float(promo.discount_value),
-        "max_discount_amount": float(promo.max_discount_amount or 0),
-        "min_purchase_amount": float(promo.min_purchase_amount or 0),
-        "start_date": promo.start_date,
-        "end_date": promo.end_date,
-    }
 
 
 

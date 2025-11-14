@@ -1,42 +1,39 @@
-# events_router.py (Versión Unificada)
-
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func
-from typing import List, Optional
+from typing import Optional, List
 from uuid import UUID
-from datetime import datetime
-
-from app.core.dependencies import get_db, get_current_user
-from app.services.event_service import EventService  # Usando la capa de servicio
-from app.models.user import User
-from app.models.event import EventStatus
-from app.models.ticket import Ticket
-from app.models.event import EventStatus
-
-# Esquemas de Pydantic
+import os
+from app.core.database import get_db
+from app.core.dependencies import get_current_active_user
+from app.services.event_service import EventService
 from app.schemas.event import (
     EventCreate,
     EventUpdate,
     EventResponse,
-    EventListResponse,    # Esquema de lista con paginación
-    EventSearchResponse,  # Esquema de búsqueda con paginación
-    EventDetailResponse,  # Esquema detallado para un solo evento
-    OrganizerEventResponse  # Importar el esquema necesario
+    EventDetailResponse,
+    EventListResponse,
+    OrganizerEventResponse,
+    EventSearchResponse,
+    MessageResponse,
+    EventStatusUpdate
 )
+from app.models.event import EventStatus
+from app.models.user import User
 
-router = APIRouter(prefix="/events", tags=["events"])
 
-# --- Dependencia del Servicio ---
+# =========================================================
+# 🔹 Router & Dependencia
+# =========================================================
+router = APIRouter(prefix="/events", tags=["Events"])
 
 def get_event_service(db: Session = Depends(get_db)) -> EventService:
-    """Dependencia para inyectar la capa de servicio de eventos"""
+    """Inyección de dependencia para la capa de servicio"""
     return EventService(db)
 
-# --- Endpoints ---
 
-
-
+# =========================================================
+# 🔹 Búsqueda avanzada
+# =========================================================
 @router.get("/search", response_model=EventSearchResponse)
 async def search_and_list_events(
     query: Optional[str] = Query(None, description="Búsqueda por título o descripción"),
@@ -48,18 +45,11 @@ async def search_and_list_events(
     location: Optional[str] = Query(None, description="Ubicación geográfica (ciudad, región)"),
     venue: Optional[str] = Query(None, description="Nombre del local o recinto específico"),
     status: Optional[EventStatus] = Query(None, description="Estado del evento (DRAFT, PUBLISHED, etc.)"),
-    
-    # Paginación (de ambos)
     page: int = Query(1, ge=1, description="Número de página"),
     page_size: int = Query(20, ge=1, le=100, description="Resultados por página"),
-    
     event_service: EventService = Depends(get_event_service)
 ):
-    """
-    Búsqueda avanzada de eventos con filtros múltiples y paginación.
-    Combina la funcionalidad de listado general, búsqueda y filtrado por organizador.
-    """
-    # El servicio se encarga de la lógica de búsqueda y paginación
+    """Búsqueda avanzada de eventos con filtros múltiples y paginación."""
     return event_service.search_events(
         query=query,
         categories=categories,
@@ -74,6 +64,11 @@ async def search_and_list_events(
         page_size=page_size
     )
 
+
+# =========================================================
+# 🔹 Listar eventos
+# =========================================================
+
 @router.get("/", response_model=List[EventResponse])
 def get_events(
     skip: int = Query(0, ge=0),
@@ -81,10 +76,9 @@ def get_events(
     status: Optional[str] = Query(None),
     event_service: EventService = Depends(get_event_service)
 ):
-    """
-    Obtener todos los eventos publicados con paginación simple
-    """
+    """Obtener todos los eventos publicados (paginado simple)."""
     return event_service.get_all_events(skip=skip, limit=limit, status_filter=status)
+
 
 @router.get("/active", response_model=List[EventResponse])
 def get_active_events(
@@ -93,127 +87,186 @@ def get_active_events(
     status: Optional[str] = Query(None),
     event_service: EventService = Depends(get_event_service)
 ):
-    """
-    Obtener todos los eventos activos con fecha despues de hoy
-    """
-    return event_service.get_active_events(skip=skip, limit=limit, status_filter=status)
+    """Obtener eventos activos (con fecha futura)."""
+    events = event_service.event_repo.get_active_events(skip=skip, limit=limit, status_filter=status)
+    return events
 
 
 @router.get("/featured", response_model=List[EventResponse])
-async def get_featured_events(
+def get_featured_events(
     limit: int = Query(6, ge=1, le=20, description="Número de eventos destacados"),
     event_service: EventService = Depends(get_event_service)
 ):
-    """
-    Obtener eventos destacados (próximos eventos publicados).
-    """
+    """Obtener eventos destacados (próximos eventos publicados)."""
     return event_service.get_featured_events(limit=limit)
 
+# =========================================================
+# 🔹 Obtener eventos del organizador autenticado
+# =========================================================
+@router.get("/my-events", response_model=List[OrganizerEventResponse])
+async def get_my_events(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    event_service = EventService(db)
+    events = event_service.get_events_by_organizer(current_user.id)
 
+    # 🔥 Convertir Event → OrganizerEventResponse
+    organizer_events = []
+    for ev in events:
+        organizer_events.append({
+            "id": str(ev.id),
+            "title": ev.title,
+            "date": ev.startDate.isoformat(),
+            "location": ev.venue,
+            "totalTickets": ev.totalCapacity,
+            "soldTickets": sum(tt.sold_quantity or 0 for tt in ev.ticket_types),
+            "status": ev.status.value if hasattr(ev.status, "value") else ev.status,
+            "imageUrl": f"/events/{ev.id}/photo" if ev.photo else None
+        })
+
+    return organizer_events
+
+@router.get("/by-organizer/{organizer_id}", response_model=List[EventResponse])
+async def get_events_by_organizer_id(
+    organizer_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Lista eventos vigentes de un organizador.
+    """
+    event_service = EventService(db)
+    events = event_service.get_events_vigentes_by_organizer(organizer_id)
+    return [e.to_dict() for e in events]
+
+
+# =========================================================
+# 🔹 Crear un evento
+# =========================================================
 @router.post("/", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
 async def create_event(
     event_data: EventCreate,
-    current_user: User = Depends(get_current_user),
-    event_service: EventService = Depends(get_event_service)
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
 ):
     """
-    Crear un nuevo evento. Requiere autenticación.
+    Crear un nuevo evento (estado inicial: DRAFT)
     """
-    # El servicio maneja la creación y la asignación del organizer_id
+    event_service = EventService(db)
     return event_service.create_event(event_data, current_user.id)
 
 
+# =========================================================
+# 🔹 Obtener detalle de evento
+# =========================================================
 @router.get("/{event_id}", response_model=EventDetailResponse)
 def get_event(event_id: UUID, db: Session = Depends(get_db)):
+    """Obtener detalle completo del evento por ID (con ticket_types)."""
     event_service = EventService(db)
     return event_service.get_event_by_id(event_id)
 
 
+# =========================================================
+# 🔹 Actualizar evento
+# =========================================================
 @router.put("/{event_id}", response_model=EventResponse)
 async def update_event(
-    event_id: UUID,  # Usando UUID
+    event_id: UUID,
     event_data: EventUpdate,
-    current_user: User = Depends(get_current_user),
-    event_service: EventService = Depends(get_event_service)
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
 ):
     """
-    Actualizar un evento existente.
-    Solo el organizador del evento puede actualizarlo.
+    Update event
+    
+    Only the event organizer or an admin can update the event.
+    Only provided fields will be updated.
     """
-    # El servicio maneja la lógica de permisos (403) y "no encontrado" (404)
-    return event_service.update_event(event_id, event_data, current_user.id)
+    event_service = EventService(db)
+    
+    # Check if user is admin
+    is_admin = any(role.name == "ADMIN" for role in current_user.roles) if current_user.roles else False
+    
+    return event_service.update_event(
+        event_id=event_id,
+        event_data=event_data,
+        user_id=current_user.id,
+        is_admin=is_admin
+    )
+
+# =========================================================
+# 🔹 Cambiar estado de evento
+# =========================================================
+@router.patch("/{event_id}/status", response_model=EventResponse)
+async def update_event_status(
+    event_id: UUID,
+    status_data: EventStatusUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Cambiar el estado del evento (DRAFT, PUBLISHED, CANCELLED, COMPLETED).
+    """
+    event_service = EventService(db)
+    is_admin = any(role.name == "ADMIN" for role in current_user.roles) if current_user.roles else False
+    return event_service.update_event_status(
+        event_id=event_id,
+        new_status=status_data.status,
+        user_id=current_user.id,
+        is_admin=is_admin
+    )
 
 
-@router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
+# =========================================================
+# 🔹 Eliminar evento
+# =========================================================
+@router.delete("/{event_id}", response_model=MessageResponse)
 async def delete_event(
-    event_id: UUID,  # Usando UUID
-    current_user: User = Depends(get_current_user),
-    event_service: EventService = Depends(get_event_service)
-):
-    """
-    Eliminar un evento.
-    Solo el organizador del evento puede eliminarlo.
-    """
-    # El servicio maneja la lógica de permisos (403) y "no encontrado" (404)
-    event_service.delete_event(event_id, current_user.id)
-    # No se retorna contenido en un 204
-    return None
-
-
-@router.post("/{event_id}/publish", response_model=EventResponse)
-async def publish_event(
-    event_id: UUID,  # Usando UUID
-    current_user: User = Depends(get_current_user),
-    event_service: EventService = Depends(get_event_service)
-):
-    """
-    Publicar un evento (cambiar de DRAFT a PUBLISHED).
-    Solo el organizador puede hacerlo.
-    """
-    return event_service.publish_event(event_id, current_user.id)
-
-
-@router.post("/{event_id}/cancel", response_model=EventResponse)
-async def cancel_event(
-    event_id: UUID,  # Usando UUID
-    current_user: User = Depends(get_current_user),
-    event_service: EventService = Depends(get_event_service)
-):
-    """
-    Cancelar un evento (cambiar estado a CANCELLED).
-    Solo el organizador puede hacerlo.
-    """
-    return event_service.cancel_event(event_id, current_user.id)
-
-
-@router.post("/{event_id}/draft", response_model=EventResponse)
-async def set_event_draft(
     event_id: UUID,
-    current_user: User = Depends(get_current_user),
-    event_service: EventService = Depends(get_event_service)
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
 ):
     """
-    Poner el evento en estado DRAFT.
-    Solo el organizador puede hacerlo.
+    Delete event
+    
+    Only the event organizer or an admin can delete the event.
+    Cannot delete events that have sold tickets.
     """
-    return event_service.set_draft_event(event_id, current_user.id)
+    event_service = EventService(db)
+    
+    # Check if user is admin
+    is_admin = any(role.name == "ADMIN" for role in current_user.roles) if current_user.roles else False
+    
+    return event_service.delete_event(
+        event_id=event_id,
+        user_id=current_user.id,
+        is_admin=is_admin
+    )
 
-
-@router.post("/{event_id}/complete", response_model=EventResponse)
-async def complete_event(
+@router.get("/{event_id}/photo")
+async def get_event_photo(
     event_id: UUID,
-    current_user: User = Depends(get_current_user),
-    event_service: EventService = Depends(get_event_service)
+    event_service: EventService = Depends(get_event_service),
+    db: Session = Depends(get_db)
 ):
     """
-    Marcar el evento como COMPLETED.
-    Solo el organizador puede hacerlo.
+    Obtener la foto de un evento.
     """
-    return event_service.complete_event(event_id, current_user.id)
+    event_service = EventService(db)
+    return event_service.get_event(event_id)
+    
+@router.post("/{event_id}/upload-photo", response_model=EventResponse)
+async def upload_event_photo(
+    event_id: UUID,
+    photo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    event_service = EventService(db)
 
-@router.get("/organizer/{organizer_id}", response_model=List[OrganizerEventResponse])
-def get_organizer_events(
-    organizer_id: UUID,
-    event_service: EventService = Depends(get_event_service)
-    ) -> list[OrganizerEventResponse]:
-    return event_service.get_organizer_events(organizer_id)
+    # Leer bytes del archivo
+    photo_bytes = await photo.read()
+
+    # Guardar la foto en la DB
+    updated_event = event_service.update_event_photo(event_id, photo_bytes)
+
+    return updated_event
