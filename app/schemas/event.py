@@ -1,76 +1,65 @@
-from pydantic import BaseModel, Field, validator, ConfigDict
+from pydantic import BaseModel, Field, validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
 
-from app.models.event import EventStatus
-
-# ============= BASE SCHEMAS =============
-
-class EventBase(BaseModel):
-    title: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = None
-    startDate: datetime
-    endDate: datetime
-    venue: str = Field(..., min_length=1, max_length=200)
-    totalCapacity: int = Field(..., gt=0)
-    category_id: Optional[UUID] = None
-
+# Request schemas
+class EventCreate(BaseModel):
+    """Schema for creating a new event"""
+    title: str = Field(..., min_length=3, max_length=200, description="Event title")
+    description: Optional[str] = Field(None, description="Event description")
+    startDate: datetime = Field(..., description="Event start date and time")
+    endDate: datetime = Field(..., description="Event end date and time")
+    venue: str = Field(..., min_length=3, max_length=200, description="Event venue/location")
+    totalCapacity: int = Field(..., gt=0, description="Total capacity of the event")
+    multimedia: Optional[List[str]] = Field(default=[], description="List of image/video URLs")
+    category_id: Optional[UUID] = Field(None, description="Event category ID")
+    
     @validator('endDate')
     def validate_end_date(cls, v, values):
-        if 'startDate' in values and v < values['startDate']:
+        if 'startDate' in values and v <= values['startDate']:
             raise ValueError('endDate must be after startDate')
         return v
-
-# ============= CREATE SCHEMAS =============
-
-class EventCreate(EventBase):
-    """Schema para crear un evento"""
-    pass
-
-# ============= UPDATE SCHEMAS =============
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "title": "Concierto Rock en Vivo 2025",
+                "description": "Las mejores bandas de rock en un solo lugar",
+                "startDate": "2025-11-15T20:00:00",
+                "endDate": "2025-11-15T23:00:00",
+                "venue": "Estadio Nacional, Lima",
+                "totalCapacity": 5000,
+                "multimedia": ["https://example.com/image1.jpg"],
+                "category_id": "123e4567-e89b-12d3-a456-426614174000"
+            }
+        }
 
 class EventUpdate(BaseModel):
-    """Schema para actualizar un evento (todos los campos opcionales)"""
-    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    """Schema for updating an event"""
+    title: Optional[str] = Field(None, min_length=3, max_length=200)
     description: Optional[str] = None
     startDate: Optional[datetime] = None
     endDate: Optional[datetime] = None
-    venue: Optional[str] = Field(None, min_length=1, max_length=200)
+    venue: Optional[str] = Field(None, min_length=3, max_length=200)
     totalCapacity: Optional[int] = Field(None, gt=0)
+    multimedia: Optional[List[str]] = None
     category_id: Optional[UUID] = None
-    status: Optional[EventStatus] = None
-
-    @validator('endDate')
-    def validate_end_date(cls, v, values):
-        if v and 'startDate' in values and values['startDate'] and v < values['startDate']:
-            raise ValueError('endDate must be after startDate')
-        return v
-
-# ============= RESPONSE SCHEMAS =============
-
-class OrganizerInfo(BaseModel):
-    """Información básica del organizador"""
-    id: UUID
-    firstName: str
-    lastName: str
-    email: str
     
     class Config:
-        from_attributes = True
+        json_schema_extra = {
+            "example": {
+                "title": "Concierto Rock en Vivo 2025 - ACTUALIZADO",
+                "totalCapacity": 6000
+            }
+        }
 
-class CategoryInfo(BaseModel):
-    """Información básica de la categoría"""
-    id: UUID
-    name: str
-    
-    class Config:
-        from_attributes = True
-
+# Response schemas
 class EventResponse(BaseModel):
+    """Schema for event response"""
     id: UUID
     title: str
-    description: Optional[str] = None
+    description: Optional[str]
     startDate: datetime
     endDate: datetime
     venue: str
@@ -276,3 +265,38 @@ class EventCategoryResponse(BaseModel):
     
     class Config:
         from_attributes = True
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "events": [],
+                "total": 100,
+                "page": 1,
+                "pageSize": 10,
+                "totalPages": 10
+            }
+        }
+
+class MessageResponse(BaseModel):
+    """Generic message response"""
+    message: str
+    success: bool = True
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "message": "Operación exitosa",
+                "success": True
+            }
+        }
+
+class EventStatusUpdate(BaseModel):
+    """Schema for updating event status"""
+    status: str = Field(..., pattern="^(DRAFT|PUBLISHED|CANCELLED|COMPLETED)$")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "PUBLISHED"
+            }
+        }
