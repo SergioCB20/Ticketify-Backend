@@ -127,7 +127,7 @@ class UserRepository:
                         )
 
                     # Guardar la imagen directamente como base64 en la DB
-                    user.profilePhoto = profile_photo_base64
+                    user.profilePhoto = photo_bytes
                     user.profilePhotoMimeType = mime_type
 
                 except ValueError as e:
