@@ -1,8 +1,8 @@
-"""nueva migracion
+"""nueva miagracion
 
-Revision ID: eb30d3f0fb98
+Revision ID: e0e8cf5e16be
 Revises: 
-Create Date: 2025-11-09 23:52:53.122905
+Create Date: 2025-11-13 21:17:29.353478
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'eb30d3f0fb98'
+revision = 'e0e8cf5e16be'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -66,8 +66,8 @@ def upgrade() -> None:
     sa.Column('firstName', sa.String(length=100), nullable=False),
     sa.Column('lastName', sa.String(length=100), nullable=False),
     sa.Column('phoneNumber', sa.String(length=20), nullable=True),
-    sa.Column('documentId', sa.String(length=50), nullable=True),
     sa.Column('documentType', sa.Enum('DNI', 'CE', 'PASSPORT', name='documenttype'), nullable=True),
+    sa.Column('documentId', sa.String(length=50), nullable=True),
     sa.Column('country', sa.String(length=100), nullable=True),
     sa.Column('city', sa.String(length=100), nullable=True),
     sa.Column('gender', sa.Enum('MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY', name='gender'), nullable=True),
@@ -112,7 +112,7 @@ def upgrade() -> None:
     sa.Column('venue', sa.String(length=200), nullable=False),
     sa.Column('totalCapacity', sa.Integer(), nullable=False),
     sa.Column('status', sa.Enum('DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED', name='eventstatus'), nullable=False),
-    sa.Column('multimedia', sa.ARRAY(sa.String()), nullable=True),
+    sa.Column('photo', sa.LargeBinary(), nullable=True),
     sa.Column('createdAt', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updatedAt', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('organizer_id', sa.UUID(), nullable=False),

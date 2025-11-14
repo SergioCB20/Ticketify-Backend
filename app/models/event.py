@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime, Enum, Integer, Text, ForeignKey, ARRAY
+from sqlalchemy import Column, String, Boolean, DateTime, Enum, Integer, Text, ForeignKey, ARRAY, LargeBinary
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -36,7 +36,7 @@ class Event(Base):
     status = Column(Enum(EventStatus), default=EventStatus.DRAFT, nullable=False)
     
     # Multimedia (NUEVO según diagrama)
-    multimedia = Column(ARRAY(String), nullable=True)  # Lista de URLs de imágenes/videos
+    photo = Column(LargeBinary, nullable=True)  # Lista de URLs de imágenes/videos
     
     # Timestamps
     createdAt = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -118,7 +118,7 @@ class Event(Base):
             "venue": self.venue,
             "totalCapacity": self.totalCapacity,
             "status": self.status.value,
-            "multimedia": self.multimedia if self.multimedia else [],
+            "photoUrl": f"/events/{self.id}/photo" if self.photo else None,
             "availableTickets": self.available_tickets,
             "isSoldOut": self.is_sold_out,
             "minPrice": self.min_price,
