@@ -1,7 +1,30 @@
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, ConfigDict
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
+
+# Schemas de información adicional
+class OrganizerInfo(BaseModel):
+    """Schema para información del organizador"""
+    id: UUID
+    firstName: str
+    lastName: str
+    email: str
+    profilePhoto: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+class CategoryInfo(BaseModel):
+    """Schema para información de la categoría"""
+    id: UUID
+    name: str
+    slug: str
+    icon: Optional[str] = None
+    color: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
 
 # Request schemas
 class EventCreate(BaseModel):

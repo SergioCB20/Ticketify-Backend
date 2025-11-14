@@ -294,6 +294,20 @@ class EventService:
     
     def _event_to_response(self, event: Event) -> EventResponse:
         """Convert Event model to EventResponse"""
+        # Generar URL de la foto si existe
+        photo_url = f"/api/events/{event.id}/photo" if event.photo else None
+        
+        # Obtener información de la categoría si existe
+        category_dict = None
+        if event.category:
+            category_dict = {
+                "id": str(event.category.id),
+                "name": event.category.name,
+                "slug": event.category.slug,
+                "icon": event.category.icon,
+                "color": event.category.color
+            }
+        
         return EventResponse(
             id=event.id,
             title=event.title,
@@ -303,11 +317,14 @@ class EventService:
             venue=event.venue,
             totalCapacity=event.totalCapacity,
             status=event.status.value,
-            multimedia=event.multimedia if event.multimedia else [],
+            photoUrl=photo_url,
             availableTickets=event.available_tickets,
             isSoldOut=event.is_sold_out,
             organizerId=event.organizer_id,
             categoryId=event.category_id,
+            category=category_dict,
+            minPrice=event.min_price,
+            maxPrice=event.max_price,
             createdAt=event.createdAt,
             updatedAt=event.updatedAt
         )

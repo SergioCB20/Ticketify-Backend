@@ -43,7 +43,6 @@ async def create_event(
 @router.get("/{event_id}/photo")
 async def get_event_photo(
     event_id: UUID,
-    event_service: EventService = Depends(get_event_service),
     db: Session = Depends(get_db)
 ):
     """
