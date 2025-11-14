@@ -39,7 +39,7 @@ class Event(Base):
     status = Column(Enum(EventStatus), default=EventStatus.DRAFT, nullable=False)
 
     # Multimedia (HEAD)
-    multimedia = Column(ARRAY(String), nullable=True)
+   # multimedia = Column(ARRAY(String), nullable=True)
     # Imagen binaria (MAIN)
     photo = Column(LargeBinary, nullable=True)
     # Timestamps
@@ -129,7 +129,7 @@ class Event(Base):
             "totalCapacity": self.totalCapacity,
             "status": self.status.value if hasattr(self.status, "value") else self.status,
             "photoUrl": f"/events/{self.id}/photo" if self.photo else None,
-            "multimedia": self.multimedia or [],
+            #"multimedia": self.multimedia or [],
             "availableTickets": self.available_tickets,
             "isSoldOut": self.is_sold_out,
             "organizerId": str(self.organizer_id) if self.organizer_id else None,

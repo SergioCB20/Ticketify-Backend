@@ -120,9 +120,9 @@ async def get_my_events(
             "date": ev.startDate.isoformat(),
             "location": ev.venue,
             "totalTickets": ev.totalCapacity,
-            "soldTickets": sum(tt.sold_quantity or 0 for tt in ev.ticket_types),
+            "soldTickets": sum(tt['sold_quantity'] or 0 for tt in ev.ticket_types),
             "status": ev.status.value if hasattr(ev.status, "value") else ev.status,
-            "imageUrl": f"/events/{ev.id}/photo" if ev.photo else None
+            "imageUrl": ev.photoUrl
         })
 
     return organizer_events
@@ -246,14 +246,24 @@ async def delete_event(
 @router.get("/{event_id}/photo")
 async def get_event_photo(
     event_id: UUID,
-    event_service: EventService = Depends(get_event_service),
     db: Session = Depends(get_db)
 ):
     """
-    Obtener la foto de un evento.
+    Obtener la foto de un evento como respuesta binaria.
     """
+    from fastapi.responses import Response
+    
     event_service = EventService(db)
-    return event_service.get_event(event_id)
+    event = event_service.event_repo.get_event_by_id(event_id)
+    
+    if not event:
+        raise HTTPException(status_code=404, detail="Evento no encontrado")
+    
+    if not event.photo:
+        raise HTTPException(status_code=404, detail="El evento no tiene foto")
+    
+    # Retornar la imagen como bytes
+    return Response(content=event.photo, media_type="image/jpeg")
     
 @router.post("/{event_id}/upload-photo", response_model=EventResponse)
 async def upload_event_photo(

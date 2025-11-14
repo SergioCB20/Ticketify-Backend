@@ -17,6 +17,7 @@ CREATE DATABASE ticketify
 
 	SELECT * FROM event_categories;
 
+In Database ticketify
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
