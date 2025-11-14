@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from app.core.database import SessionLocal, engine
-from app.models import Base
+from app.core.database import Base
 
 
 def reset_database():
