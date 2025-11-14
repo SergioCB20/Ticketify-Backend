@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.database import SessionLocal, engine
 from app.models import (
     User, Event, EventCategory, TicketType, EventStatus,
-    Role, Permission
+    Role, Permission, DocumentType, Gender
 )
 import bcrypt
 import uuid
@@ -124,7 +124,11 @@ def create_users(db: Session):
             "firstName": "Admin",
             "lastName": "Ticketify",
             "phoneNumber": "+51999888777",
-            "documentId": "12345678"
+            "documentType": DocumentType.DNI,
+            "documentId": "12345678",
+            "country": "Perú",
+            "city": "Lima",
+            "gender": Gender.PREFER_NOT_TO_SAY
         },
         {
             "email": "organizador@ticketify.com",
@@ -132,7 +136,11 @@ def create_users(db: Session):
             "firstName": "Carlos",
             "lastName": "Promotor",
             "phoneNumber": "+51999777666",
-            "documentId": "87654321"
+            "documentType": DocumentType.DNI,
+            "documentId": "87654321",
+            "country": "Perú",
+            "city": "Lima",
+            "gender": Gender.MALE
         },
         {
             "email": "usuario@ticketify.com",
@@ -140,7 +148,11 @@ def create_users(db: Session):
             "firstName": "María",
             "lastName": "González",
             "phoneNumber": "+51999666555",
-            "documentId": "11223344"
+            "documentType": DocumentType.DNI,
+            "documentId": "11223344",
+            "country": "Perú",
+            "city": "Lima",
+            "gender": Gender.FEMALE
         }
     ]
     
@@ -165,8 +177,14 @@ def create_users(db: Session):
                 password=hashed_password,
                 firstName=user_data["firstName"],
                 lastName=user_data["lastName"],
-                phoneNumber=user_data["phoneNumber"],
-                documentId=user_data["documentId"],
+                phoneNumber=user_data.get("phoneNumber"),
+                documentType=user_data.get("documentType"),
+                documentId=user_data.get("documentId"),
+                country=user_data.get("country"),
+                city=user_data.get("city"),
+                gender=user_data.get("gender"),
+                profilePhoto=None,
+                profilePhotoMimeType=None,
                 isActive=True,
                 createdAt=datetime.utcnow()
             )
