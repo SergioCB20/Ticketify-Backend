@@ -3,30 +3,9 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
 
-# Schemas de información adicional
-class OrganizerInfo(BaseModel):
-    """Schema para información del organizador"""
-    id: UUID
-    firstName: str
-    lastName: str
-    email: str
-    profilePhoto: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
-
-class CategoryInfo(BaseModel):
-    """Schema para información de la categoría"""
-    id: UUID
-    name: str
-    slug: str
-    icon: Optional[str] = None
-    color: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
-
-# Request schemas
+# =========================================================
+# 🧩 Event Create & Update Schemas
+# =========================================================
 class EventCreate(BaseModel):
     """Schema for creating a new event"""
     title: str = Field(..., min_length=3, max_length=200, description="Event title")
@@ -37,13 +16,13 @@ class EventCreate(BaseModel):
     totalCapacity: int = Field(..., gt=0, description="Total capacity of the event")
     multimedia: Optional[List[str]] = Field(default=[], description="List of image/video URLs")
     category_id: Optional[UUID] = Field(None, description="Event category ID")
-    
+
     @validator('endDate')
     def validate_end_date(cls, v, values):
         if 'startDate' in values and v <= values['startDate']:
             raise ValueError('endDate must be after startDate')
         return v
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -58,6 +37,7 @@ class EventCreate(BaseModel):
             }
         }
 
+
 class EventUpdate(BaseModel):
     """Schema for updating an event"""
     title: Optional[str] = Field(None, min_length=3, max_length=200)
@@ -68,7 +48,6 @@ class EventUpdate(BaseModel):
     totalCapacity: Optional[int] = Field(None, gt=0)
     multimedia: Optional[List[str]] = None
     category_id: Optional[UUID] = None
-    
     class Config:
         json_schema_extra = {
             "example": {
@@ -77,9 +56,11 @@ class EventUpdate(BaseModel):
             }
         }
 
-# Response schemas
+
+# =========================================================
+# 🧾 Event Response Schemas
+# =========================================================
 class EventResponse(BaseModel):
-    """Schema for event response"""
     id: UUID
     title: str
     description: Optional[str]
@@ -88,7 +69,7 @@ class EventResponse(BaseModel):
     venue: str
     totalCapacity: int
     status: str
-    photoUrl: Optional[str] = None  # URL para obtener la foto
+    photoUrl: Optional[str] = None
     availableTickets: int
     isSoldOut: bool
     organizerId: UUID
@@ -98,59 +79,94 @@ class EventResponse(BaseModel):
     maxPrice: Optional[float] = None
     createdAt: datetime
     updatedAt: datetime
-    
+
     class Config:
         from_attributes = True
 
+
+# =========================================================
+# 🎟️ Ticket Types Schema
+# =========================================================
+class TicketTypeResponse(BaseModel):
+    id: UUID
+    name: str
+    description: Optional[str] = None
+    price: float
+    original_price: Optional[float] = None
+    quantity_available: int
+    sold_quantity: int
+    remaining_quantity: int
+    min_purchase: int
+    max_purchase: int
+    is_active: bool
+    is_sold_out: bool
+
+    class Config:
+        from_attributes = True
+
+
+# =========================================================
+# 🧾 Event Detail Schema
+# =========================================================
 class EventDetailResponse(EventResponse):
-    """Schema de respuesta detallado que incluye info del organizador y categoría"""
-    organizer: Optional[OrganizerInfo] = None
-    category: Optional[CategoryInfo] = None    
-    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+    """
+    Respuesta detallada del evento, con tipos de tickets.
+    """
+    organizer: Optional[Dict[str, Any]] = None
+    category: Optional[Dict[str, Any]] = None
+    ticket_types: List[TicketTypeResponse] = Field(default_factory=list)
+
+    class Config:
+        from_attributes = True
+        orm_mode = True
 
 
+# =========================================================
+# 📄 Listado / Paginación
+# =========================================================
 class EventListResponse(BaseModel):
-    """Schema de respuesta para lista de eventos paginada"""
     events: List[EventResponse]
     total: int
     page: int
     pageSize: int
     totalPages: int
 
+    class Config:
+        from_attributes = True
+
+
 class EventSimpleResponse(BaseModel):
     id: UUID
     title: str
-    startDate: datetime 
+    startDate: datetime
     venue: str
     multimedia: Optional[List[str]] = None
 
     class Config:
         from_attributes = True
-        populate_by_name = True
 
+
+# =========================================================
+# 🔍 Búsqueda avanzada
+# =========================================================
 class EventSearchFilters(BaseModel):
-    """
-    Modelo para validar los filtros de búsqueda de eventos
-    """
     query: Optional[str] = Field(None, description="Texto de búsqueda en título y descripción")
     categories: Optional[List[str]] = Field([], description="Lista de slugs de categorías")
-    min_price: Optional[float] = Field(None, ge=0, description="Precio mínimo de tickets")
-    max_price: Optional[float] = Field(None, ge=0, description="Precio máximo de tickets")
-    start_date: Optional[str] = Field(None, description="Fecha de inicio (YYYY-MM-DD)")
-    end_date: Optional[str] = Field(None, description="Fecha de fin (YYYY-MM-DD)")
-    location: Optional[str] = Field(None, description="Ubicación (ciudad o lugar)")
-    status: Optional[str] = Field(None, description="Estado del evento")
-    
+    min_price: Optional[float] = Field(None, ge=0)
+    max_price: Optional[float] = Field(None, ge=0)
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    location: Optional[str] = None
+    status: Optional[str] = None
+
     @validator('categories', pre=True)
     def split_categories(cls, v):
-        """Convertir string separado por comas en lista"""
         if isinstance(v, str):
             return [c.strip() for c in v.split(',') if c.strip()]
         return v or []
-    
+
     @validator('status')
     def validate_status(cls, v):
-        """Validar que el estado sea válido"""
         if v is not None:
             valid_statuses = ['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED']
             if v.upper() not in valid_statuses:
@@ -158,54 +174,22 @@ class EventSearchFilters(BaseModel):
             return v.upper()
         return v
 
+
 class EventSearchResponse(BaseModel):
-    """
-    Respuesta paginada para búsqueda de eventos
-    """
-    events: List[Dict[str, Any]] = Field(..., description="Lista de eventos encontrados")
-    total: int = Field(..., description="Total de eventos que cumplen con los criterios")
-    page: int = Field(..., description="Página actual")
-    page_size: int = Field(..., description="Tamaño de página")
-    total_pages: int = Field(..., description="Total de páginas disponibles")
+    events: List[Dict[str, Any]]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
-    model_config = ConfigDict(
-        json_schema_extra = {
-            "example": {
-                "events": [
-                    {
-                        "id": "123e4567-e89b-12d3-a456-426614174000",
-                        "title": "Concierto de Rock",
-                        "description": "El mejor concierto del año",
-                        "startDate": "2025-12-01T20:00:00",
-                        "endDate": "2025-12-01T23:00:00",
-                        "venue": "Estadio Nacional",
-                        "totalCapacity": 5000,
-                        "status": "PUBLISHED",
-                        "availableTickets": 2500,
-                        "isSoldOut": False,
-                        "minPrice": 50.0,
-                        "maxPrice": 200.0,
-                        "category": {
-                            "id": "456e7890-e89b-12d3-a456-426614174001",
-                            "name": "Conciertos",
-                            "slug": "conciertos",
-                            "icon": "🎵",
-                            "color": "#FF5733"
-                        }
-                    }
-                ],
-                "total": 45,
-                "page": 1,
-                "page_size": 20,
-                "total_pages": 3
-            }
-        }
-        )
+    class Config:
+        from_attributes = True
 
+
+# =========================================================
+# 🗂️ Categorías
+# =========================================================
 class CategoryResponse(BaseModel):
-    """
-    Respuesta para categorías de eventos
-    """
     id: UUID
     name: str
     description: Optional[str] = None
@@ -217,55 +201,10 @@ class CategoryResponse(BaseModel):
     isFeatured: bool
     eventCount: int
     sortOrder: int
-    
+
     class Config:
         from_attributes = True
 
-class OrganizerEventResponse(BaseModel):
-    id: UUID
-    title: str
-    date: datetime
-    location: str
-    totalTickets: int
-    soldTickets: int
-    status: str
-    imageUrl: Optional[str] = None
-
-    # Permite que Pydantic lea los datos desde un modelo de SQLAlchemy
-    model_config = ConfigDict(from_attributes=True)
-
-class EventCategoryBase(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = None
-    slug: str = Field(..., min_length=1, max_length=120)
-    icon: Optional[str] = None
-    color: Optional[str] = None
-    image_url: Optional[str] = None
-    meta_title: Optional[str] = None
-    meta_description: Optional[str] = None
-    parent_id: Optional[UUID] = None
-    sort_order: int = 0
-    level: int = 0
-    is_active: bool = True
-    is_featured: bool = False
-
-class EventCategoryCreate(EventCategoryBase):
-    pass
-
-class EventCategoryUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = None
-    slug: Optional[str] = Field(None, min_length=1, max_length=120)
-    icon: Optional[str] = None
-    color: Optional[str] = None
-    image_url: Optional[str] = None
-    meta_title: Optional[str] = None
-    meta_description: Optional[str] = None
-    parent_id: Optional[UUID] = None
-    sort_order: Optional[int] = None
-    level: Optional[int] = None
-    is_active: Optional[bool] = None
-    is_featured: Optional[bool] = None
 
 class EventCategoryResponse(BaseModel):
     id: UUID
@@ -285,41 +224,39 @@ class EventCategoryResponse(BaseModel):
     eventCount: int
     createdAt: datetime
     updatedAt: datetime
-    
+
     class Config:
         from_attributes = True
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "events": [],
-                "total": 100,
-                "page": 1,
-                "pageSize": 10,
-                "totalPages": 10
-            }
-        }
 
+
+# =========================================================
+# 🧩 Genéricos del main
+# =========================================================
 class MessageResponse(BaseModel):
     """Generic message response"""
     message: str
     success: bool = True
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "message": "Operación exitosa",
-                "success": True
-            }
-        }
+
 
 class EventStatusUpdate(BaseModel):
     """Schema for updating event status"""
     status: str = Field(..., pattern="^(DRAFT|PUBLISHED|CANCELLED|COMPLETED)$")
-    
+
     class Config:
         json_schema_extra = {
-            "example": {
-                "status": "PUBLISHED"
-            }
+            "example": {"status": "PUBLISHED"}
         }
+
+class OrganizerEventResponse(BaseModel):
+    id: str
+    title: str
+    date: str
+    location: str
+    totalTickets: int
+    soldTickets: int
+    status: str
+    imageUrl: Optional[str] = None
+
+    model_config = {
+        "from_attributes": True
+    }
