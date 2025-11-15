@@ -82,7 +82,7 @@ class MarketplaceService:
         self.db.add(listing)
 
         # 3. Invalidar el ticket original (del vendedor)
-        original_ticket_qr = original_ticket.qrCode
+        original_ticket_qr = original_ticket.qrCode or ""
         original_ticket.status = TicketStatus.TRANSFERRED
         original_ticket.isValid = False
         self.db.add(original_ticket)
