@@ -227,6 +227,33 @@ pytest
 pytest --cov=app
 ```
 
+## 🌐 Configuración de CORS
+
+El backend está configurado para aceptar peticiones desde el frontend que corre en `http://localhost:3000`.
+
+### Orígenes permitidos:
+- `http://localhost:3000` (Frontend principal)
+- `http://localhost:3001` (Frontend alternativo)
+
+### Verificar configuración CORS:
+
+```bash
+# Ejecutar script de prueba
+python test_cors.py
+```
+
+### Agregar nuevos orígenes:
+
+Edita el archivo `.env` y modifica la variable `ALLOWED_HOSTS`:
+
+```env
+ALLOWED_HOSTS=["http://localhost:3000","http://localhost:3001","http://nuevo-origen:puerto"]
+```
+
+**Nota**: Recuerda reiniciar el servidor después de modificar el archivo `.env`.
+
+Para más detalles, consulta [CORS_CONFIG.md](./CORS_CONFIG.md)
+
 ## 📝 API Documentation
 
 Una vez que el servidor esté corriendo:

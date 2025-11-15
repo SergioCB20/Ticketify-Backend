@@ -1,5 +1,3 @@
-# app/api/tickets.py
-
 from fastapi import APIRouter, Depends, HTTPException, status, Query # 👈 Asegúrate de importar Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, func, exists
@@ -65,9 +63,8 @@ async def get_my_tickets(
         listing_id = str(active_listing.id) if active_listing else None
         
         # Obtener portada (similar a la lógica anterior)
-        cover = None
-        if ticket.event.multimedia and isinstance(ticket.event.multimedia, list) and len(ticket.event.multimedia) > 0:
-            cover = ticket.event.multimedia[0]
+        cover = ticket.event.photo
+       
 
         # Construir el diccionario de respuesta
         ticket_dict = {
@@ -102,4 +99,3 @@ async def get_my_tickets(
         "page": page,
         "page_size": page_size
     }
-    # --- FIN DE LA CORRECCIÓN (v2) ---
