@@ -19,6 +19,9 @@ from app.models.ticket import Ticket, TicketStatus
 from app.models.payment import Payment, PaymentMethod, PaymentStatus 
 from app.services.marketplace_service import MarketplaceService 
 import uuid
+# Importar utilidades de imagen
+from app.utils.image_utils import process_nested_user_photo
+
 # (Asumo que tus schemas están en sus propios archivos como planeamos)
 from app.schemas.marketplace import (
     MarketplaceListingResponse, 
@@ -30,7 +33,6 @@ router = APIRouter(prefix="/marketplace", tags=["Marketplace"])
 
 # --- ENDPOINT GET (Para ver el listado) ---
 @router.get("/listings", response_model=PaginatedMarketplaceListings)
-
 async def get_active_listings(
     db: Session = Depends(get_db),
     page: int = Query(1, ge=1),
@@ -75,10 +77,14 @@ async def get_active_listings(
         offset = (page - 1) * page_size
         
         # Aplicar paginación y ejecutar query
-        listings = db.scalars(query.order_by(MarketplaceListing.created_at.desc()).offset(offset).limit(page_size)).all()
-        # Justo antes del return:
-        from app.schemas.marketplace import MarketplaceListingResponse
-
+        listings = db.scalars(query.order_by(MarketplaceListing.created_at.desc()).offset(offset).limit(page_size)).unique().all()
+        
+        # 🔧 PROCESAR FOTOS DE PERFIL: Convertir bytes a base64
+        for listing in listings:
+            # Procesar foto del vendedor si existe
+            process_nested_user_photo(listing, 'seller', 'profilePhoto')
+        
+        # Crear respuesta
         response_data = PaginatedMarketplaceListings(
             items=[MarketplaceListingResponse.model_validate(listing) for listing in listings],
             total=total,
@@ -87,16 +93,6 @@ async def get_active_listings(
             totalPages=total_pages,
         )
         return response_data
-
-
-        
-        #return {
-        #    "items": listings,
-        #    "total": total,
-        #    "page": page,
-        #    "pageSize": page_size,
-        #    "totalPages": total_pages
-        #}*/
 
     except Exception as e:
         print(f"Error al obtener listados del marketplace: {e}")
@@ -112,9 +108,8 @@ async def get_active_listings(
 async def create_listing(
     listing_data: MarketplaceListingCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user) # <-- ¡¡AHORA FUNCIONARÁ!!
+    current_user: User = Depends(get_current_active_user)
 ):
-
     # 1. VALIDACIÓN: Buscar el ticket que el usuario quiere vender
     ticket_to_sell = db.query(Ticket).filter(
         Ticket.id == listing_data.ticketId
@@ -157,25 +152,24 @@ async def create_listing(
 
     # 7. CREACIÓN: Si todo está bien, creamos el listado
     new_listing = MarketplaceListing(
-        title=f"Reventa de entrada para: {ticket_to_sell.event.title}", # Título autogenerado
+        title=f"Reventa de entrada para: {ticket_to_sell.event.title}",
         description=listing_data.description,
         price=listing_data.price,
-        original_price=ticket_to_sell.price, # Guardamos el precio original
+        original_price=ticket_to_sell.price,
         is_negotiable=False, 
         status=ListingStatus.ACTIVE,
         seller_id=current_user.id,
         ticket_id=ticket_to_sell.id,
         event_id=ticket_to_sell.event_id,
-        expires_at=ticket_to_sell.event.startDate - timedelta(hours=1) # Expira 1h antes del evento
+        expires_at=ticket_to_sell.event.startDate - timedelta(hours=1)
     )
     
     db.add(new_listing)
-    # ✅ NO cambiamos el status del ticket al publicarlo
-    # El ticket sigue siendo ACTIVE y del dueño original
-    # Solo se marca como TRANSFERRED cuando realmente se VENDE
-    
     db.commit()
     db.refresh(new_listing)
+    
+    # 🔧 Procesar foto del vendedor antes de retornar
+    process_nested_user_photo(new_listing, 'seller', 'profilePhoto')
     
     return new_listing
 
@@ -196,7 +190,7 @@ async def buy_listing(
         MarketplaceListing.id == listing_id,
         MarketplaceListing.status == ListingStatus.ACTIVE
     ).options(
-        joinedload(MarketplaceListing.ticket).joinedload(Ticket.event)# Cargar el ticket original
+        joinedload(MarketplaceListing.ticket).joinedload(Ticket.event)
     ).first()
 
     if not listing:
@@ -209,14 +203,14 @@ async def buy_listing(
     # 1. Crear el registro del Pago
     new_payment = Payment(
         amount=listing.price,
-        paymentMethod=PaymentMethod.CREDIT_CARD, # Simulado
+        paymentMethod=PaymentMethod.CREDIT_CARD,
         transactionId=f"txn_resale_{uuid.uuid4()}",
         status=PaymentStatus.COMPLETED,
         paymentDate=datetime.utcnow(),
         user_id=current_user.id
     )
     db.add(new_payment)
-    db.flush() # Para obtener el new_payment.id
+    db.flush()
 
     # 2. Llamar al servicio de transferencia atómica
     try:
@@ -235,7 +229,6 @@ async def buy_listing(
         }
 
     except Exception as e:
-        # El servicio ya hizo rollback, solo informamos del error
         raise HTTPException(status_code=500, detail=f"Error en la transferencia: {e}")
 
 

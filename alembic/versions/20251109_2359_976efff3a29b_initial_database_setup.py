@@ -1,8 +1,8 @@
-"""nueva migracion
+"""Initial database setup
 
-Revision ID: 04fda0211fd5
+Revision ID: 976efff3a29b
 Revises: 
-Create Date: 2025-11-07 20:51:38.923364
+Create Date: 2025-11-09 23:59:39.439165
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '04fda0211fd5'
+revision = '976efff3a29b'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -76,14 +76,6 @@ def upgrade() -> None:
     sa.Column('isActive', sa.Boolean(), nullable=False),
     sa.Column('createdAt', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('lastLogin', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('mercadopagoUserId', sa.String(length=255), nullable=True),
-    sa.Column('mercadopagoPublicKey', sa.String(length=255), nullable=True),
-    sa.Column('mercadopagoAccessToken', sa.Text(), nullable=True),
-    sa.Column('mercadopagoRefreshToken', sa.Text(), nullable=True),
-    sa.Column('mercadopagoTokenExpires', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('isMercadopagoConnected', sa.Boolean(), nullable=False, server_default='false'),
-    sa.Column('mercadopagoConnectedAt', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('mercadopagoEmail', sa.String(length=255), nullable=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_users_documentId'), 'users', ['documentId'], unique=True)
@@ -315,7 +307,9 @@ def upgrade() -> None:
     sa.Column('event_id', sa.UUID(), nullable=False),
     sa.Column('ticket_type_id', sa.UUID(), nullable=False),
     sa.Column('promotion_id', sa.UUID(), nullable=True),
+    sa.Column('payment_id', sa.UUID(), nullable=True),
     sa.ForeignKeyConstraint(['event_id'], ['events.id'], ),
+    sa.ForeignKeyConstraint(['payment_id'], ['payments.id'], ),
     sa.ForeignKeyConstraint(['promotion_id'], ['promotions.id'], ),
     sa.ForeignKeyConstraint(['ticket_type_id'], ['ticket_types.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),

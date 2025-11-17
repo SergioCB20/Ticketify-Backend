@@ -72,7 +72,7 @@ def crear_ticket_para_usuario():
                 name="General",
                 description="Entrada general",
                 price=Decimal("50.00"),
-                quantity=500,
+                quantity_available=500,
                 sold_quantity=0
             )
             db.add(ticket_type)

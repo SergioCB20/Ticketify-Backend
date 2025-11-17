@@ -47,8 +47,7 @@ class User(Base):
     password = Column(String(255), nullable=False)  # Renombrado de hashed_password
     firstName = Column(String(100), nullable=False)  # Renombrado de first_name
     lastName = Column(String(100), nullable=False)  # Renombrado de last_name
-    phoneNumber = Column(String(20), nullable=True)  # NUEVO
-    documentId = Column(String(50), nullable=True)  # NUEVO
+    phoneNumber = Column(String(20), nullable=True)
     # Document information
     documentType = Column(Enum(DocumentType), nullable=True)  # DNI, CE, Pasaporte
     documentId = Column(String(50), nullable=True, unique=True, index=True)  # Número de documento

@@ -63,19 +63,6 @@ class PromotionRepository:
                 detail="El evento asociado no existe."
             )
 
-        # 4️⃣ Validar solapamiento de promociones activas dentro del mismo evento
-        overlapping_promo = self.db.query(Promotion).filter(
-            Promotion.event_id == promo.event_id,
-            Promotion.start_date <= promo.end_date,
-            Promotion.end_date >= promo.start_date,
-            Promotion.status == PromotionStatus.ACTIVE
-        ).first()
-
-        if overlapping_promo:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"El evento ya tiene otra promoción activa ('{overlapping_promo.code}') en ese rango de fechas."
-            )
         self.db.add(promo)
         self.db.commit()
         self.db.refresh(promo)

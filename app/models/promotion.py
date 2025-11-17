@@ -67,7 +67,7 @@ class Promotion(Base):
     
     # Foreign keys
     created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    event_id = Column(UUID(as_uuid=True), ForeignKey("events.id"), nullable=False)
+    event_id = Column(UUID(as_uuid=True), ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
 
     # Relationships
     created_by = relationship("User", back_populates="created_promotions")

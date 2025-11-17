@@ -2,10 +2,17 @@ import json
 from typing import List
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore"
+    )
+
     # Basic App Config
     APP_NAME: str = "Ticketify"
     ENVIRONMENT: str = "development"
@@ -81,10 +88,6 @@ class Settings(BaseSettings):
             return v.replace("${NGROK_URL}", ngrok_url)
         return v
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
 
 
 # Instancia global
