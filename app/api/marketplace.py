@@ -77,7 +77,7 @@ async def get_active_listings(
         offset = (page - 1) * page_size
         
         # Aplicar paginación y ejecutar query
-        listings = db.scalars(query.order_by(MarketplaceListing.created_at.desc()).offset(offset).limit(page_size)).all()
+        listings = db.scalars(query.order_by(MarketplaceListing.created_at.desc()).offset(offset).limit(page_size)).unique().all()
         
         # 🔧 PROCESAR FOTOS DE PERFIL: Convertir bytes a base64
         for listing in listings:
