@@ -19,8 +19,12 @@ from app.models.purchase import Purchase, PurchaseStatus
 from app.schemas.purchase import (
     ProcessPaymentRequest,
     PurchaseResponse,
-    TicketResponse
+    TicketResponse,
+    CreatePreferenceRequest,
+    CreatePreferenceRespons
 )
+from app.services.payment_service import PaymentService
+
 
 router = APIRouter(prefix="/purchases", tags=["Purchases"])
 
@@ -30,6 +34,7 @@ async def process_purchase(
     request: ProcessPaymentRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_attendee_user)
+    payment_service: PaymentService = Depends(PaymentService)
 ):
     """
     Procesa la compra directa de tickets de un evento.
@@ -71,131 +76,57 @@ async def process_purchase(
         )
     
     # 3. CALCULAR MONTO TOTAL
-    total_amount = float(ticket_type.price) * request.purchase.quantity
-    
-    # 4. SIMULAR PROCESAMIENTO DE PAGO (Datos ficticios)
-    # En producción, aquí se llamaría a MercadoPago u otro gateway
-    payment_successful, payment_message = _simulate_payment_processing(
-        card_number=request.payment.cardNumber,
-        amount=total_amount
-    )
-    
-    if not payment_successful:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail=payment_message
-        )
-    
-    # 5. CREAR REGISTRO DE PAGO
-    payment = Payment(
-        amount=Decimal(str(total_amount)),
-        paymentMethod=PaymentMethod.CREDIT_CARD,
-        transactionId=f"txn_sim_{uuid4()}",  # ID simulado
-        status=PaymentStatus.COMPLETED,
-        paymentDate=datetime.utcnow(),
-        user_id=current_user.id
-    )
-    db.add(payment)
-    db.flush()  # Obtener el payment.id
-    
-    # 6. CREAR REGISTRO DE COMPRA
+    total_amount = Decimal(str(ticket_type.price)) * request.quantity
     purchase = Purchase(
-    total_amount=Decimal(str(total_amount)),
-    subtotal=Decimal(str(total_amount)),  # ✅ Igualamos subtotal al total
-    tax_amount=Decimal("0.00"),
-    service_fee=Decimal("0.00"),
-    discount_amount=Decimal("0.00"),
-    quantity=request.purchase.quantity,
-    unit_price=ticket_type.price,
-    status=PurchaseStatus.COMPLETED,
-    payment_method=PaymentMethod.CREDIT_CARD,
-    buyer_email=current_user.email,
-    purchase_date=datetime.now(timezone.utc),
-    user_id=current_user.id,
-    event_id=event.id,
-    ticket_type_id=ticket_type.id,
-    payment_id=payment.id
-)
-
+        total_amount=total_amount,
+        subtotal=total_amount,
+        tax_amount=Decimal("0.00"),
+        service_fee=Decimal("0.00"),
+        discount_amount=Decimal("0.00"),
+        quantity=request.quantity,
+        unit_price=ticket_type.price,
+        status=PurchaseStatus.PENDING, # Estado PENDIENTE
+        payment_method=PaymentMethod.MERCADOPAGO, # O el método que corresponda
+        buyer_email=current_user.email,
+        purchase_date=datetime.now(timezone.utc),
+        user_id=current_user.id,
+        event_id=event.id,
+        ticket_type_id=ticket_type.id,
+        payment_id=None # Aún no hay pago
+    )
     db.add(purchase)
-    db.flush()  # Obtener el purchase.id
-    
-    # 7. GENERAR LOS TICKETS CON QR
-    tickets_created = []
-    
-    for i in range(request.purchase.quantity):
-        ticket = Ticket(
-            price=ticket_type.price,
-            status=TicketStatus.ACTIVE,
-            isValid=True,
-            user_id=current_user.id,
-            event_id=event.id,
-            ticket_type_id=ticket_type.id,
-            payment_id=payment.id,
-            purchase_id=purchase.id
-        )
-        db.add(ticket)
-        db.flush()  # Asegurar que el ticket tenga ID
-        
-        # GENERAR QR VISUAL (esta es la parte clave de la Tarea 2)
-        ticket.generate_qr()
-        
-        tickets_created.append(ticket)
-    
-    # 8. ACTUALIZAR DISPONIBILIDAD
-    ticket_type.quantity_available -= request.purchase.quantity
-    ticket_type.sold_quantity += request.purchase.quantity
-
-    
-    # 9. COMMIT DE TODA LA TRANSACCIÓN
+    db.flush()
     try:
-        db.commit()
+        # 5. PREPARAR ITEMS PARA MERCADOPAGO
+        items_list = [{
+            "title": f"{ticket_type.name} - {event.name}",
+            "quantity": request.quantity,
+            "unit_price": float(ticket_type.price),
+            "currency_id": "PEN" # Ajusta tu moneda
+        }]
+
+        # 6. CREAR PREFERENCIA DE PAGO
+        preference = payment_service.create_event_preference(
+            purchase=purchase,
+            items=items_list,
+            buyer_email=current_user.email
+        )
         
-        # Refrescar objetos
-        for ticket in tickets_created:
-            db.refresh(ticket)
-        db.refresh(payment)
+        # 7. Guardar el ID de preferencia en la compra
+        purchase.mercadopago_preference_id = preference["id"]
+        
+        db.commit() # Confirmamos la creación de la compra y el pref_id
         db.refresh(purchase)
         
+        # 8. DEVOLVER EL INIT_POINT AL FRONTEND
+        return CreatePreferenceResponse(
+            purchaseId=purchase.id,
+            init_point=preference["init_point"]
+        )
+
     except Exception as e:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al procesar la compra: {str(e)}"
+            detail=f"Error al crear la preferencia de pago: {str(e)}"
         )
-    
-    # 10. CONSTRUIR RESPUESTA
-    return PurchaseResponse(
-        success=True,
-        message=f"¡Compra exitosa! Se generaron {len(tickets_created)} ticket(s).",
-        purchaseId=purchase.id,
-        paymentId=payment.id,
-        tickets=[
-            TicketResponse(
-                id=ticket.id,
-                eventId=ticket.event_id,
-                ticketTypeId=ticket.ticket_type_id,
-                price=float(ticket.price),
-                qrCode=ticket.qrCode,
-                status=ticket.status.value,
-                purchaseDate=ticket.purchaseDate.isoformat()
-            )
-            for ticket in tickets_created
-        ],
-        totalAmount=total_amount
-    )
-
-
-def _simulate_payment_processing(card_number: str, amount: float) -> tuple[bool, str]:
-    """
-    Simula el procesamiento de un pago.
-    """
-    last_digits = card_number[-4:]
-    
-    if last_digits == "0000":
-        return (False, "Tarjeta rechazada por el banco emisor.")
-    elif last_digits == "1111":
-        return (False, "Fondos insuficientes.")
-    else:
-        return (True, "Pago aprobado.")
-

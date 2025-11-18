@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     MERCADOPAGO_ACCESS_TOKEN: str
     MERCADOPAGO_PUBLIC_KEY: str
     MERCADOPAGO_SANDBOX: bool = True
+    MERCADOPAGO_PRODUCER_TOKEN: str
     
     # MercadoPago OAuth
     MERCADOPAGO_CLIENT_ID: str
@@ -88,7 +89,8 @@ class Settings(BaseSettings):
             return v.replace("${NGROK_URL}", ngrok_url)
         return v
 
-
+    class Config:
+        env_file = ".env"
 
 # Instancia global
 settings = Settings()

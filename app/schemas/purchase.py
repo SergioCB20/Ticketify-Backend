@@ -7,6 +7,30 @@ from uuid import UUID
 from decimal import Decimal
 
 
+
+class CreatePreferenceRequest(BaseModel):
+    """
+    Schema para la solicitud de creación de preferencia.
+    """
+    eventId: UUID
+    ticketTypeId: UUID
+    quantity: int
+    # promoCode: str | None = None # (Opcional, si manejas promos)
+
+    class Config:
+        orm_mode = True
+
+class CreatePreferenceResponse(BaseModel):
+    """
+    Respuesta con el init_point para el frontend.
+    """
+    purchaseId: UUID
+    init_point: str
+
+    class Config:
+        orm_mode = True
+
+        
 class PurchaseTicketRequest(BaseModel):
     """Request para comprar tickets de un evento"""
     eventId: UUID = Field(..., description="ID del evento")
