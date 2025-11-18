@@ -142,7 +142,7 @@ class EventSimpleResponse(BaseModel):
     title: str
     startDate: datetime
     venue: str
-    photoUrl: Optional[str] = None
+    #photoUrl: Optional[str] = None
     #multimedia: Optional[List[str]] = None
 
     class Config:

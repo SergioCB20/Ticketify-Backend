@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     API_VERSION: str = "v1"
 
+    # URLs
+    FRONTEND_URL: str = "http://localhost:3000"
+    BACKEND_URL: str = "http://localhost:8000"
+
     # Database
     DATABASE_URL: str
 
@@ -89,8 +93,6 @@ class Settings(BaseSettings):
             return v.replace("${NGROK_URL}", ngrok_url)
         return v
 
-    class Config:
-        env_file = ".env"
 
 # Instancia global
 settings = Settings()

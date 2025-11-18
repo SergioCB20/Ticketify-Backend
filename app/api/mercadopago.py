@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Response, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -235,15 +235,10 @@ async def mercadopago_webhook(
     body = await request.json()
     topic = body.get("topic")
     
-    if topic == "merchant_order":
-        # Lógica de orden (menos común para pagos simples)
-        pass
-
     if topic == "payment":
         payment_id = body.get("data", {}).get("id")
         if not payment_id:
-            return status.HTTP_200_OK # No podemos hacer nada, pero MP no debe reintentar
-
+            return status.HTTP_200_OK # No podemos hacer nada
         try:
             # Inicializar SDK de plataforma para *consultar* el pago
             sdk = mercadopago.SDK(settings.MERCADOPAGO_PRODUCER_TOKEN)
@@ -277,8 +272,37 @@ async def mercadopago_webhook(
                 
                 db.commit() # Commit de la transacción completa
 
-            # (Opcional) Manejar otros estados como "rejected", "pending"
-            # ...
+                # (Opcional) Manejar otros estados como "rejected", "pending"
+                if external_reference.startswith("PURCHASE_"):
+                        purchase_id_str = external_reference.split("_")[1]
+                        purchase = db.query(Purchase).filter(Purchase.id == uuid.UUID(purchase_id_str)).first()
+                        if not purchase:
+                            raise Exception(f"Compra {purchase_id_str} no encontrada")
+
+                        PurchaseService.finalize_purchase_transaction(
+                            db=db,
+                            purchase=purchase,
+                            payment_info=payment_info_dict
+                        )
+
+                    # Opción 2: Es una compra de marketplace
+                elif external_reference.startswith("LISTING_"):
+                    parts = external_reference.split("_") # "LISTING", "listing_id", "BUYER", "buyer_id"
+                    listing_id_str = parts[1]
+                    buyer_id_str = parts[3]
+
+                    # Instanciamos el servicio (no podemos usar Depends en un webhook)
+                    marketplace_service = MarketplaceService(db)
+
+                    # Llamamos a la lógica de negocio para transferir el ticket
+                    marketplace_service.buy_listing(
+                        listing_id=uuid.UUID(listing_id_str),
+                        buyer_id=uuid.UUID(buyer_id_str)
+                    )
+
+                db.commit() # Commit de la transacción
+
+                # ... (manejo de otros estados) ..
 
         except Exception as e:
             db.rollback()
