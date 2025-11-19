@@ -93,6 +93,5 @@ class Settings(BaseSettings):
             return v.replace("${NGROK_URL}", ngrok_url)
         return v
 
-
 # Instancia global
 settings = Settings()

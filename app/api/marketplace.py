@@ -422,3 +422,29 @@ async def cancel_listing(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al cancelar el listing: {e}"
         )
+@router.get("/listings/{listing_id}", response_model=ListingResponse)
+async def get_listing(
+    listing_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Obtener el detalle de un listado específico del marketplace.
+    """
+    listing = db.query(MarketplaceListing).filter(
+        MarketplaceListing.id == listing_id
+    ).options(
+        joinedload(MarketplaceListing.seller),
+        joinedload(MarketplaceListing.event),
+        joinedload(MarketplaceListing.ticket).joinedload(Ticket.ticket_type)
+    ).first()
+
+    if not listing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Listado no encontrado"
+        )
+    
+    # Procesar la URL de la foto del vendedor
+    process_nested_user_photo(listing, settings.BACKEND_URL)
+    
+    return listing
