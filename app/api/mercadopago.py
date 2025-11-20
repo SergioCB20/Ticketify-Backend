@@ -41,9 +41,9 @@ async def connect_mercadopago(
     
     # Generar URL de autorización (usa MERCADOPAGO_FORCE_LOGOUT del .env)
     auth_url = mp_service.get_authorization_url(str(current_user.id))
-    
+    print("url: " + auth_url)
     # Redirigir a MercadoPago
-    return RedirectResponse(url=auth_url)
+    return {"url": auth_url}
 
 
 @router.get("/callback")

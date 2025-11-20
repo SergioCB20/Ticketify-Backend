@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     API_VERSION: str = "v1"
 
     # URLs
-    FRONTEND_URL: str = "http://localhost:3000"
-    BACKEND_URL: str = "http://localhost:8000"
+    FRONTEND_URL: str = "https://initiated-kurt-processing-flat.trycloudflare.com"
+    BACKEND_URL: str = "https://mindi-defervescent-then.ngrok-free.dev"
 
     # Database
     DATABASE_URL: str
@@ -32,7 +32,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     # CORS
-    ALLOWED_HOSTS: List[str] = ["http://localhost:3000"]
+    ALLOWED_HOSTS: List[str] = ["*"] #cambiar en produccion, solo es para que no falle localmente xd (muchos dominios nuevos)
+
     
     # NGROK
     NGROK_URL: str = ""  # URL de ngrok para desarrollo

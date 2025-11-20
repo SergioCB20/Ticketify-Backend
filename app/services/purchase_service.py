@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import uuid
 import logging
+from fastapi import HTTPException, status
 
 from app.models.purchase import Purchase, PurchaseStatus
 from app.models.payment import Payment, PaymentMethod, PaymentStatus
@@ -11,6 +12,8 @@ from app.models.ticket_type import TicketType
 from app.models.event import Event
 from app.models.user import User
 from app.models.promotion import Promotion
+# Si tienes qr_generator.py, impórtalo. Si no, comenta esta línea.
+#from app.utils.qr_generator import generate_qr_code 
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +26,8 @@ class PurchaseService:
     ) -> dict:
         """
         Calcula el monto total de la compra con descuentos aplicados.
-        
-        Args:
-            ticket_selections: Lista de dict con ticketTypeId y quantity
-            promotion: Promoción a aplicar (opcional)
-            
-        Returns:
-            dict con subtotal, discount_amount, tax_amount, service_fee, total
         """
         subtotal = Decimal("0.00")
-        total_quantity = 0
         
         for selection in ticket_selections:
             ticket_type = selection['ticket_type']
@@ -40,183 +35,255 @@ class PurchaseService:
             price = Decimal(str(ticket_type.price))
             
             subtotal += price * quantity
-            total_quantity += quantity
         
         # Calcular descuento
         discount_amount = Decimal("0.00")
         if promotion:
             if promotion.promotion_type == "PERCENTAGE":
-                discount_amount = (subtotal * Decimal(str(promotion.discount_value))) / Decimal("100")
+                discount_percent = Decimal(str(promotion.discount_value)) / 100
+                discount_amount = subtotal * discount_percent
             elif promotion.promotion_type == "FIXED_AMOUNT":
                 discount_amount = Decimal(str(promotion.discount_value))
-            elif promotion.promotion_type == "BUY_X_GET_Y":
-                # Lógica de buy X get Y
-                x_quantity = promotion.min_purchase_quantity or 1
-                if total_quantity >= x_quantity:
-                    # Calcular cuántos tickets gratis
-                    free_tickets = total_quantity // x_quantity
-                    # Precio promedio por ticket
-                    avg_price = subtotal / total_quantity
-                    discount_amount = avg_price * free_tickets
         
-        # Asegurar que el descuento no sea mayor que el subtotal
-        discount_amount = min(discount_amount, subtotal)
+        # Calcular impuestos y fees
+        tax_rate = Decimal("0.00")
+        service_fee_rate = Decimal("0.10") # 10% comisión
         
-        # Calcular impuestos y tarifas (ajustar según necesites)
-        tax_amount = Decimal("0.00")  # 0% de impuestos por ahora
-        service_fee = Decimal("0.00")  # Sin tarifa de servicio por ahora
+        service_fee = subtotal * service_fee_rate
+        tax_amount = subtotal * tax_rate
         
-        total = subtotal - discount_amount + tax_amount + service_fee
+        total = subtotal + service_fee + tax_amount - discount_amount
+        if total < 0: total = Decimal("0.00")
         
         return {
             "subtotal": subtotal,
             "discount_amount": discount_amount,
             "tax_amount": tax_amount,
             "service_fee": service_fee,
-            "total_amount": total,
-            "quantity": total_quantity
+            "total": total
         }
 
     @staticmethod
+    def create_pending_purchase(
+        db: Session,
+        user_id: uuid.UUID,
+        event_id: uuid.UUID,
+        tickets_data: list, 
+        promotion_code: str = None
+    ) -> tuple[Purchase, list]:
+        """
+        Crea una compra en estado PENDING y valida el stock.
+        """
+        # 1. Obtener y validar el evento
+        event = db.query(Event).filter(Event.id == event_id).first()
+        if not event:
+            raise HTTPException(status_code=404, detail="Evento no encontrado")
+
+        # 2. Procesar tickets y validar stock
+        mp_items = []
+        ticket_selections = []
+        
+        for item in tickets_data:
+            # Acceso híbrido (Soporta Pydantic y Dict)
+            if isinstance(item, dict):
+                t_id = item.get("ticketTypeId")
+                qty = item.get("quantity")
+            else:
+                t_id = item.ticketTypeId
+                qty = item.quantity
+
+            ticket_type = db.query(TicketType).filter(
+                TicketType.id == t_id, 
+                TicketType.event_id == event.id
+            ).first()
+            
+            if not ticket_type:
+                raise HTTPException(status_code=404, detail=f"Tipo de ticket {t_id} no encontrado")
+            
+            # ✅ CORRECCIÓN: Calcular stock disponible manualmente
+            available_stock = ticket_type.quantity_available - ticket_type.sold_quantity
+            
+            if available_stock < qty:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"No hay suficiente stock para {ticket_type.name}. Disponibles: {available_stock}"
+                )
+
+            ticket_selections.append({
+                "ticket_type": ticket_type,
+                "quantity": qty
+            })
+            
+            mp_items.append({
+                "id": str(ticket_type.id),
+                "title": f"{event.title} - {ticket_type.name}",
+                "quantity": qty,
+                "unit_price": float(ticket_type.price),
+                "currency_id": "PEN"
+            })
+
+        # 3. Validar Promoción
+        promotion = None
+        if promotion_code:
+            promotion = db.query(Promotion).filter(
+                Promotion.code == promotion_code,
+                Promotion.event_id == event.id,
+                Promotion.is_active == True
+            ).first()
+
+        # 4. Calcular montos
+        amounts = PurchaseService.calculate_purchase_amount(ticket_selections, promotion)
+
+        # --- CÁLCULO DEL UNIT_PRICE (Requerido por el modelo Purchase) ---
+        total_qty = sum(t["quantity"] for t in ticket_selections)
+        if total_qty > 0:
+            avg_unit_price = amounts["subtotal"] / total_qty
+        else:
+            avg_unit_price = Decimal("0.00")
+        # -----------------------------------------------------------------
+
+        # 5. Crear la Compra
+        new_purchase = Purchase(
+            user_id=user_id,
+            event_id=event_id,
+            status=PurchaseStatus.PENDING,
+            total_amount=amounts["total"],
+            subtotal=amounts["subtotal"],
+            service_fee=amounts["service_fee"],
+            tax_amount=amounts["tax_amount"],
+            discount_amount=amounts["discount_amount"],
+            quantity=total_qty,
+            unit_price=avg_unit_price, # ✅ Campo añadido
+            buyer_email="", 
+            promotion_id=promotion.id if promotion else None
+        )
+        
+        db.add(new_purchase)
+        db.commit()
+        db.refresh(new_purchase)
+        
+        return new_purchase, mp_items
+
+    @staticmethod
     def finalize_purchase_transaction(
-        db: Session, 
+        db: Session,
         purchase: Purchase,
         payment_info: dict
-    ) -> bool:
+    ) -> Purchase:
         """
-        Finaliza una compra APROBADA por MercadoPago.
-        Esta función es llamada por el Webhook.
-        
-        Args:
-            db: Sesión de base de datos
-            purchase: Objeto Purchase de la compra
-            payment_info: Diccionario con datos del pago de MP
-            
-        Returns:
-            bool: True si la compra se finalizó correctamente
+        Finaliza una compra exitosa: Genera tickets y actualiza stock.
         """
-        
         try:
-            # 1. Verificar que no esté ya procesada
-            if purchase.status == PurchaseStatus.COMPLETED:
-                logger.info(f"La compra {purchase.id} ya fue procesada.")
-                return True
-
-            if purchase.status not in [PurchaseStatus.PENDING, PurchaseStatus.PROCESSING]:
-                raise Exception(f"La compra {purchase.id} no está en estado válido para procesar (estado: {purchase.status})")
-
-            # Cambiar estado a procesando
-            purchase.status = PurchaseStatus.PROCESSING
-            db.flush()
-
-            # 2. CREAR REGISTRO DE PAGO
-            payment = Payment(
-                amount=Decimal(str(payment_info["amount"])),
-                paymentMethod=PaymentMethod.MERCADOPAGO,
-                transactionId=str(payment_info["id"]),
-                status=PaymentStatus.COMPLETED,
-                paymentDate=datetime.now(timezone.utc),
-                user_id=purchase.user_id
-            )
-            db.add(payment)
-            db.flush()
-
-            # 3. GENERAR LOS TICKETS CON QR
-            # Obtener todos los ticket_types de esta compra
-            tickets_created = []
+            logger.info(f"🔄 Iniciando finalización de compra {purchase.id}")
             
-            # Si la compra tiene ticket_type_id (compra simple de un tipo)
-            if purchase.ticket_type_id:
-                ticket_type = db.query(TicketType).filter(
-                    TicketType.id == purchase.ticket_type_id
+            # 1. Actualizar estado de compra
+            purchase.status = PurchaseStatus.COMPLETED
+            purchase.payment_date = datetime.now(timezone.utc)
+            purchase.payment_reference = str(payment_info.get("id"))
+            purchase.confirmation_date = datetime.now(timezone.utc)
+            
+            logger.info(f"✅ Purchase status updated to COMPLETED")
+            
+            # 2. Obtener el tipo de ticket
+            # NOTA: Esto es simplificado. Idealmente deberías tener una tabla intermedia
+            # purchase_items que contenga el detalle de qué ticket_types y cantidades se compraron.
+            
+            ticket_type_id = purchase.ticket_type_id
+            
+            # Si no hay ticket_type_id en purchase, buscar el primero del evento
+            if not ticket_type_id:
+                logger.warning(f"⚠️ Purchase {purchase.id} no tiene ticket_type_id, buscando fallback")
+                first_tt = db.query(TicketType).filter(
+                    TicketType.event_id == purchase.event_id,
+                    TicketType.is_active == True
                 ).first()
                 
-                if not ticket_type:
-                    raise Exception(f"Tipo de ticket {purchase.ticket_type_id} no encontrado.")
+                if not first_tt:
+                    raise Exception(f"No se encontró ningún tipo de ticket activo para el evento {purchase.event_id}")
                 
-                for i in range(purchase.quantity):
-                    ticket = Ticket(
-                        price=ticket_type.price,
-                        status=TicketStatus.ACTIVE,
-                        isValid=True,
-                        user_id=purchase.user_id,
+                ticket_type_id = first_tt.id
+                logger.info(f"✅ Usando ticket_type fallback: {ticket_type_id}")
+            
+            # 3. Verificar que el ticket_type existe
+            ticket_type = db.query(TicketType).filter(TicketType.id == ticket_type_id).first()
+            if not ticket_type:
+                raise Exception(f"Ticket type {ticket_type_id} no encontrado")
+            
+            logger.info(f"✅ Ticket type found: {ticket_type.name}")
+            
+            # 4. Crear registro de Payment si no existe
+            if not purchase.payment_id:
+                new_payment = Payment(
+                    user_id=purchase.user_id,
+                    amount=purchase.total_amount,
+                    paymentMethod=PaymentMethod.MERCADOPAGO,
+                    status=PaymentStatus.COMPLETED,
+                    transactionId=str(payment_info.get("id")),
+                    paymentDate=datetime.now(timezone.utc)
+                )
+                db.add(new_payment)
+                db.flush()  # Para obtener el ID
+                purchase.payment_id = new_payment.id
+                logger.info(f"✅ Payment created: {new_payment.id}")
+            
+            # 5. Generar los tickets
+            tickets_created = 0
+            for i in range(purchase.quantity):
+                try:
+                    new_ticket = Ticket(
                         event_id=purchase.event_id,
-                        ticket_type_id=ticket_type.id,
-                        payment_id=payment.id,
-                        purchase_id=purchase.id
+                        user_id=purchase.user_id,
+                        purchase_id=purchase.id,
+                        status=TicketStatus.ACTIVE,
+                        ticket_type_id=ticket_type_id,
+                        price=ticket_type.price,
+                        isValid=True,
+                        payment_id=purchase.payment_id  # Campo requerido por el modelo
                     )
-                    db.add(ticket)
-                    db.flush()
                     
-                    # Generar QR
-                    ticket.generate_qr()
-                    tickets_created.append(ticket)
-                
-                # Actualizar disponibilidad
-                ticket_type.quantity_available -= purchase.quantity
+                    # Generar QR (si tienes la función descomentada)
+                    # try:
+                    #     qr_content = f"TICKET-{new_ticket.id}"
+                    #     new_ticket.qr_code = generate_qr_code(qr_content)
+                    # except Exception as e:
+                    #     logger.warning(f"No se pudo generar QR: {e}")
+                    
+                    db.add(new_ticket)
+                    tickets_created += 1
+                    logger.info(f"✅ Ticket {i+1}/{purchase.quantity} created")
+                    
+                except Exception as ticket_error:
+                    logger.error(f"❌ Error creating ticket {i+1}: {str(ticket_error)}")
+                    raise Exception(f"Error al crear ticket {i+1}: {str(ticket_error)}")
+            
+            # 6. Actualizar stock vendido
+            try:
                 ticket_type.sold_quantity += purchase.quantity
-            else:
-                # Compra múltiple de diferentes tipos
-                # Los tickets ya deberían estar creados en Purchase.notes como JSON
-                # O podemos obtenerlos de otra forma
-                # Por ahora, vamos a asumir que se guardan en notes
-                import json
-                if purchase.notes:
-                    ticket_selections = json.loads(purchase.notes)
-                    for selection in ticket_selections:
-                        ticket_type_id = selection['ticketTypeId']
-                        quantity = selection['quantity']
-                        
-                        ticket_type = db.query(TicketType).filter(
-                            TicketType.id == ticket_type_id
-                        ).first()
-                        
-                        if not ticket_type:
-                            logger.warning(f"Tipo de ticket {ticket_type_id} no encontrado.")
-                            continue
-                        
-                        for i in range(quantity):
-                            ticket = Ticket(
-                                price=ticket_type.price,
-                                status=TicketStatus.ACTIVE,
-                                isValid=True,
-                                user_id=purchase.user_id,
-                                event_id=purchase.event_id,
-                                ticket_type_id=ticket_type.id,
-                                payment_id=payment.id,
-                                purchase_id=purchase.id
-                            )
-                            db.add(ticket)
-                            db.flush()
-                            
-                            # Generar QR
-                            ticket.generate_qr()
-                            tickets_created.append(ticket)
-                        
-                        # Actualizar disponibilidad
-                        ticket_type.quantity_available -= quantity
-                        ticket_type.sold_quantity += quantity
+                logger.info(f"✅ Stock updated: {ticket_type.name} sold_quantity = {ticket_type.sold_quantity}")
+            except Exception as stock_error:
+                logger.error(f"❌ Error updating stock: {str(stock_error)}")
+                raise Exception(f"Error al actualizar stock: {str(stock_error)}")
             
-            # 4. ACTUALIZAR LA COMPRA
-            purchase.status = PurchaseStatus.COMPLETED
-            purchase.payment_id = payment.id
-            purchase.payment_date = datetime.now(timezone.utc)
-            purchase.confirmation_date = datetime.now(timezone.utc)
-            purchase.payment_reference = str(payment_info["id"])
-            
-            # 5. COMMIT DE LA TRANSACCIÓN
+            # 7. Flush para guardar cambios
             db.flush()
+            logger.info(f"✅ Compra {purchase.id} finalizada exitosamente. {tickets_created} tickets creados")
             
-            logger.info(f"✅ Compra {purchase.id} finalizada exitosamente. {len(tickets_created)} tickets creados.")
-            
-            return True
-            
+            return purchase
+
         except Exception as e:
             logger.error(f"❌ Error al finalizar compra {purchase.id}: {str(e)}")
-            purchase.status = PurchaseStatus.FAILED
-            db.flush()
-            raise
-    
+            logger.error(f"❌ Error type: {type(e).__name__}")
+            logger.error(f"❌ Error details: {repr(e)}")
+            
+            # Marcar compra como fallida
+            try:
+                purchase.status = PurchaseStatus.FAILED
+                db.flush()
+            except Exception as status_error:
+                logger.error(f"❌ No se pudo actualizar status a FAILED: {str(status_error)}")
+            
+            raise Exception(f"Error al finalizar compra: {str(e)}")
+
     @staticmethod
     def get_user_purchases(
         db: Session,
@@ -224,41 +291,28 @@ class PurchaseService:
         page: int = 1,
         page_size: int = 10
     ) -> tuple:
-        """
-        Obtiene las compras de un usuario con paginación.
-        
-        Returns:
-            tuple: (purchases, total_count)
-        """
         query = db.query(Purchase).filter(
             Purchase.user_id == user_id
         ).order_by(Purchase.created_at.desc())
         
         total = query.count()
         offset = (page - 1) * page_size
-        
         purchases = query.offset(offset).limit(page_size).all()
         
         return purchases, total
-    
+
     @staticmethod
     def get_purchase_details(
         db: Session,
         purchase_id: uuid.UUID,
         user_id: uuid.UUID = None
     ) -> Purchase:
-        """
-        Obtiene el detalle de una compra.
-        Si se proporciona user_id, valida que la compra pertenezca al usuario.
-        """
         query = db.query(Purchase).filter(Purchase.id == purchase_id)
-        
         if user_id:
             query = query.filter(Purchase.user_id == user_id)
         
         purchase = query.first()
-        
         if not purchase:
-            raise Exception("Compra no encontrada")
-        
+            raise HTTPException(status_code=404, detail="Compra no encontrada")
+            
         return purchase

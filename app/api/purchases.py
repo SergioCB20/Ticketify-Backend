@@ -40,191 +40,45 @@ async def create_purchase_preference(
     current_user: User = Depends(get_attendee_user)
 ):
     """
-    Crea una preferencia de pago en MercadoPago para compra directa de tickets.
-    Soporta múltiples tipos de tickets en una sola transacción.
-    
-    **Flujo:**
-    1. Valida evento y disponibilidad
-    2. Valida código promocional (si se proporciona)
-    3. Calcula monto total con descuentos
-    4. Crea registro de compra en estado PENDING
-    5. Genera preferencia de pago en MercadoPago
-    6. Retorna init_point para redirigir al usuario
+    Crea una preferencia de pago en Mercado Pago y una orden de compra PENDING.
     """
-    
     try:
-        # 1. VALIDAR EVENTO
-        event = db.query(Event).filter(Event.id == request.eventId).first()
-        if not event:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="El evento no existe"
-            )
-        
-        # Verificar que el evento no haya pasado
-        if event.startDate < datetime.now(timezone.utc):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No se pueden comprar tickets para eventos pasados"
-            )
-        
-        # 2. VALIDAR TIPOS DE TICKETS Y DISPONIBILIDAD
-        ticket_selections = []
-        items_list = []
-        
-        for ticket_sel in request.tickets:
-            ticket_type = db.query(TicketType).filter(
-                TicketType.id == ticket_sel.ticketTypeId,
-                TicketType.event_id == event.id
-            ).first()
-            
-            if not ticket_type:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"El tipo de ticket {ticket_sel.ticketTypeId} no existe para este evento"
-                )
-            
-            # Verificar disponibilidad
-            available = ticket_type.quantity_available - ticket_type.sold_quantity
-            if available < ticket_sel.quantity:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Solo quedan {available} tickets disponibles de tipo {ticket_type.name}"
-                )
-            
-            ticket_selections.append({
-                'ticket_type': ticket_type,
-                'quantity': ticket_sel.quantity
-            })
-            
-            # Preparar items para MercadoPago
-            items_list.append({
-                "title": f"{ticket_type.name} - {event.title}",
-                "quantity": ticket_sel.quantity,
-                "unit_price": float(ticket_type.price),
-                "currency_id": "PEN"
-            })
-        
-        # 3. VALIDAR Y APLICAR PROMOCIÓN (si existe)
-        promotion = None
-        if request.promotionCode:
-            promotion = db.query(Promotion).filter(
-                Promotion.code == request.promotionCode.upper(),
-                Promotion.event_id == event.id,
-                Promotion.is_active == True
-            ).first()
-            
-            if not promotion:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Código promocional inválido o expirado"
-                )
-            
-            # Verificar fecha de validez
-            now = datetime.now(timezone.utc)
-            if promotion.valid_from and now < promotion.valid_from:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="La promoción aún no está activa"
-                )
-            
-            if promotion.valid_until and now > promotion.valid_until:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="La promoción ha expirado"
-                )
-            
-            # Verificar límite de uso
-            if promotion.max_uses and promotion.current_uses >= promotion.max_uses:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="La promoción ha alcanzado su límite de uso"
-                )
-        
-        # 4. CALCULAR MONTO TOTAL
-        amounts = PurchaseService.calculate_purchase_amount(
-            ticket_selections=ticket_selections,
-            promotion=promotion
-        )
-        
-        # 5. CREAR REGISTRO DE COMPRA (PENDING)
-        # Guardar las selecciones como JSON en notes
-        ticket_selections_json = json.dumps([
-            {
-                "ticketTypeId": str(sel['ticket_type'].id),
-                "quantity": sel['quantity'],
-                "price": float(sel['ticket_type'].price)
-            }
-            for sel in ticket_selections
-        ])
-        
-        purchase = Purchase(
-            total_amount=amounts['total_amount'],
-            subtotal=amounts['subtotal'],
-            tax_amount=amounts['tax_amount'],
-            service_fee=amounts['service_fee'],
-            discount_amount=amounts['discount_amount'],
-            quantity=amounts['quantity'],
-            unit_price=amounts['subtotal'] / amounts['quantity'],  # Precio promedio
-            status=PurchaseStatus.PENDING,
-            payment_method=PaymentMethod.MERCADOPAGO,
-            buyer_email=current_user.email,
-            purchase_date=datetime.now(timezone.utc),
+        # 1. Llamar al servicio para crear la compra en BD
+        purchase, mp_items = PurchaseService.create_pending_purchase(
+            db=db,
             user_id=current_user.id,
-            event_id=event.id,
-            ticket_type_id=None,  # Null para compras múltiples
-            promotion_id=promotion.id if promotion else None,
-            payment_id=None,
-            notes=ticket_selections_json  # Guardar los tickets seleccionados
+            event_id=request.eventId,
+            tickets_data=request.tickets,
+            promotion_code=request.promotionCode
         )
-        db.add(purchase)
-        db.flush()
         
-        try:
-            # 6. CREAR PREFERENCIA DE PAGO
-            payment_service = PaymentService()
-            preference = payment_service.create_event_preference(
-                purchase=purchase,
-                items=items_list,
-                buyer_email=current_user.email
-            )
-            
-            # 7. Guardar el ID de preferencia en la compra
-            purchase.mercadopago_preference_id = preference["id"]
-            
-            # Si hay promoción, incrementar el uso
-            if promotion:
-                promotion.current_uses += 1
-            
-            db.commit()
-            db.refresh(purchase)
-            
-            logger.info(f"✅ Preferencia de pago creada: {preference['id']} para compra {purchase.id}")
-            
-            # 8. DEVOLVER EL INIT_POINT AL FRONTEND
-            return CreatePreferenceResponse(
-                purchaseId=purchase.id,
-                init_point=preference["init_point"],
-                preferenceId=preference["id"]
-            )
+        # Actualizar email del comprador (importante para MP)
+        purchase.buyer_email = current_user.email
+        db.commit()
 
-        except Exception as e:
-            db.rollback()
-            logger.error(f"❌ Error al crear preferencia: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error al crear la preferencia de pago: {str(e)}"
-            )
-    
-    except HTTPException:
-        raise
+        # 2. Instanciar servicio de pagos (Modo Agregador / Productor)
+        payment_service = PaymentService()
+        
+        # 3. Crear la preferencia en Mercado Pago
+        # Esto devuelve el diccionario completo de la respuesta de MP
+        preference_response = payment_service.create_event_preference(
+            purchase=purchase,
+            items=mp_items,
+            buyer_email=current_user.email
+        )
+        print("preference response:", preference_response)
+        return CreatePreferenceResponse(
+            purchaseId=str(purchase.id),
+            initPoint=preference_response["init_point"], # URL para redirigir
+            preferenceId=preference_response["id"]
+        )
+
     except Exception as e:
-        logger.error(f"❌ Error general en create_preference: {str(e)}")
+        logger.error(f"Error creando preferencia: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al procesar la solicitud: {str(e)}"
+            detail=f"Error al procesar la solicitud de pago: {str(e)}"
         )
-
 
 @router.post("/webhook")
 async def mercadopago_webhook(

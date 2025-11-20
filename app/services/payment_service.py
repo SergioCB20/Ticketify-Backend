@@ -26,15 +26,16 @@ class PaymentService:
         Crea una preferencia de pago para la compra de un evento.
         El dinero va a la cuenta de la PLATAFORMA.
         """
+        print("frontend url:" + settings.FRONTEND_URL)
         preference_data = {
             "items": items,
             "payer": {
                 "email": buyer_email,
             },
             "back_urls": {
-                "success": f"{settings.FRONTEND_URL}/events/checkout/success?purchase_id={purchase.id}",
-                "failure": f"{settings.FRONTEND_URL}/events/checkout/failure?purchase_id={purchase.id}",
-                "pending": f"{settings.FRONTEND_URL}/events/checkout/pending?purchase_id={purchase.id}"
+                "success": f"{settings.FRONTEND_URL}/events/{purchase.event_id}/checkout/success?purchase_id={purchase.id}",
+                "failure": f"{settings.FRONTEND_URL}/events/{purchase.event_id}/checkout/failure?purchase_id={purchase.id}",
+                "pending": f"{settings.FRONTEND_URL}/events/{purchase.event_id}/checkout/pending?purchase_id={purchase.id}"
             },
             "auto_return": "approved",
             "external_reference": str(purchase.id),
