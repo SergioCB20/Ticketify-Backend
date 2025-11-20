@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Response, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_active_user
 from app.services.mercadopago_oauth_service import MercadoPagoOAuthService
+from app.services.purchase_service import PurchaseService
 from app.models.user import User
 from app.schemas.auth import MessageResponse
 
@@ -40,9 +41,9 @@ async def connect_mercadopago(
     
     # Generar URL de autorización (usa MERCADOPAGO_FORCE_LOGOUT del .env)
     auth_url = mp_service.get_authorization_url(str(current_user.id))
-    
+    print("url: " + auth_url)
     # Redirigir a MercadoPago
-    return RedirectResponse(url=auth_url)
+    return {"url": auth_url}
 
 
 @router.get("/callback")
@@ -222,3 +223,92 @@ async def test_connect_mercadopago(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Token inválido: {str(e)}"
         )
+
+@router.post("/webhook")
+async def mercadopago_webhook(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Recibe notificaciones de pago de MercadoPago.
+    """
+    body = await request.json()
+    topic = body.get("topic")
+    
+    if topic == "payment":
+        payment_id = body.get("data", {}).get("id")
+        if not payment_id:
+            return status.HTTP_200_OK # No podemos hacer nada
+        try:
+            # Inicializar SDK de plataforma para *consultar* el pago
+            sdk = mercadopago.SDK(settings.MERCADOPAGO_PRODUCER_TOKEN)
+            payment_data = sdk.payment().get(payment_id)["response"]
+            
+            status_detail = payment_data.get("status")
+            external_reference = payment_data.get("external_reference")
+
+            if not external_reference:
+                 raise Exception(f"Pago {payment_id} sin external_reference")
+
+            # Buscar la compra en nuestra BBDD
+            purchase = db.query(Purchase).filter(Purchase.id == external_reference).first()
+            if not purchase:
+                raise Exception(f"Compra {external_reference} no encontrada")
+
+            # SI EL PAGO FUE APROBADO
+            if status_detail == "approved":
+                
+                payment_info_dict = {
+                    "id": payment_data["id"],
+                    "amount": payment_data["transaction_amount"]
+                }
+                
+                # Llamar a nuestro servicio para finalizar la compra
+                PurchaseService.finalize_purchase_transaction(
+                    db=db,
+                    purchase=purchase,
+                    payment_info=payment_info_dict
+                )
+                
+                db.commit() # Commit de la transacción completa
+
+                # (Opcional) Manejar otros estados como "rejected", "pending"
+                if external_reference.startswith("PURCHASE_"):
+                        purchase_id_str = external_reference.split("_")[1]
+                        purchase = db.query(Purchase).filter(Purchase.id == uuid.UUID(purchase_id_str)).first()
+                        if not purchase:
+                            raise Exception(f"Compra {purchase_id_str} no encontrada")
+
+                        PurchaseService.finalize_purchase_transaction(
+                            db=db,
+                            purchase=purchase,
+                            payment_info=payment_info_dict
+                        )
+
+                    # Opción 2: Es una compra de marketplace
+                elif external_reference.startswith("LISTING_"):
+                    parts = external_reference.split("_") # "LISTING", "listing_id", "BUYER", "buyer_id"
+                    listing_id_str = parts[1]
+                    buyer_id_str = parts[3]
+
+                    # Instanciamos el servicio (no podemos usar Depends en un webhook)
+                    marketplace_service = MarketplaceService(db)
+
+                    # Llamamos a la lógica de negocio para transferir el ticket
+                    marketplace_service.buy_listing(
+                        listing_id=uuid.UUID(listing_id_str),
+                        buyer_id=uuid.UUID(buyer_id_str)
+                    )
+
+                db.commit() # Commit de la transacción
+
+                # ... (manejo de otros estados) ..
+
+        except Exception as e:
+            db.rollback()
+            print(f"Error procesando webhook de MP: {str(e)}")
+            # Devolvemos 500 para que MP reintente
+            raise HTTPException(status_code=500, detail="Error al procesar webhook")
+
+    
+    return status.HTTP_200_OK # Siempre responder 200 a MP

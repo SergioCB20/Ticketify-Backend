@@ -1,3 +1,4 @@
+import base64
 from fastapi import APIRouter, Depends, HTTPException, status, Query # 👈 Asegúrate de importar Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, func, exists
@@ -63,7 +64,9 @@ async def get_my_tickets(
         listing_id = str(active_listing.id) if active_listing else None
         
         # Obtener portada (similar a la lógica anterior)
-        cover = ticket.event.photo
+        cover = None
+        if ticket.event.photo:
+            cover = base64.b64encode(ticket.event.photo).decode("utf-8")
        
 
         # Construir el diccionario de respuesta

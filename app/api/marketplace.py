@@ -1,16 +1,11 @@
-from fastapi import APIRouter, Depends, Query, HTTPException, status
+from fastapi import APIRouter, Depends, Query, HTTPException, status, Request
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, func, or_
 from typing import List, Optional
-import math
-import traceback
 from uuid import UUID
 from datetime import timedelta, datetime 
-from pprint import pprint
 from fastapi.responses import JSONResponse
-from app.schemas.marketplace import MarketplaceListingResponse
 from app.core.database import get_db
-from app.core.dependencies import get_current_active_user 
 from app.core.dependencies import get_current_active_user, get_attendee_user
 from app.models.user import User
 from app.models.marketplace_listing import MarketplaceListing, ListingStatus
@@ -18,44 +13,59 @@ from app.models.event import Event
 from app.models.ticket import Ticket, TicketStatus
 from app.models.payment import Payment, PaymentMethod, PaymentStatus 
 from app.services.marketplace_service import MarketplaceService 
-import uuid
-# Importar utilidades de imagen
+from app.services.payment_service import PaymentService
+from app.core.config import settings
 from app.utils.image_utils import process_nested_user_photo
-
-# (Asumo que tus schemas están en sus propios archivos como planeamos)
 from app.schemas.marketplace import (
-    MarketplaceListingResponse, 
+    ListingResponse, 
+    CreateListingRequest,
+    UpdateListingRequest,
     PaginatedMarketplaceListings,
-    MarketplaceListingCreate 
+    MarketplacePreferenceRequest,
+    MarketplacePreferenceResponse,
+    MarketplacePurchaseResponse,
+    MarketplacePurchaseRequest
 )
+from decimal import Decimal
+import uuid
+import logging
+import mercadopago
+import math
+import traceback
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/marketplace", tags=["Marketplace"])
 
-# --- ENDPOINT GET (Para ver el listado) ---
+
 @router.get("/listings", response_model=PaginatedMarketplaceListings)
 async def get_active_listings(
     db: Session = Depends(get_db),
     page: int = Query(1, ge=1),
     page_size: int = Query(12, ge=1, le=100),
     search: Optional[str] = Query(None),
+    min_price: Optional[float] = Query(None, ge=0),
+    max_price: Optional[float] = Query(None, ge=0),
+    order_by: Optional[str] = Query(None),
 ):
     """
     Obtener todos los listados de reventa ACTIVOS y paginados.
     """
     try:
-        # Query base: Solo listados ACTIVOS
         query = (
             select(MarketplaceListing)
-            .join(MarketplaceListing.event) # Join con Evento
+            .join(Event, MarketplaceListing.event_id == Event.id)
             .options(
-                joinedload(MarketplaceListing.seller), # Cargar datos del vendedor
-                joinedload(MarketplaceListing.event),   # Cargar datos del evento
-                joinedload(MarketplaceListing.ticket).joinedload(Ticket.ticket_type)  # Cargar tipo de ticket
+                joinedload(MarketplaceListing.seller),
+                joinedload(MarketplaceListing.event),
+                joinedload(MarketplaceListing.ticket).joinedload(Ticket.ticket_type)
             )
-            .where(MarketplaceListing.status == ListingStatus.ACTIVE)
+            .where(
+                MarketplaceListing.status == ListingStatus.ACTIVE,
+                MarketplaceListing.expires_at > datetime.utcnow()
+            )
         )
         
-        # Filtro de búsqueda (busca en título del listado o título del evento)
         if search:
             search_term = f"%{search.lower()}%"
             query = query.filter(
@@ -64,38 +74,46 @@ async def get_active_listings(
                     func.lower(Event.title).like(search_term)
                 )
             )
+        
+        if min_price is not None:
+            query = query.where(MarketplaceListing.price >= min_price)
+        
+        if max_price is not None:
+            query = query.where(MarketplaceListing.price <= max_price)
 
-        # Contar el total de items (antes de paginar)
         total_query = select(func.count()).select_from(query.subquery())
         total = db.execute(total_query).scalar() 
         
         if total is None:
             total = 0
 
-        # Calcular paginación
         total_pages = math.ceil(total / page_size)
         offset = (page - 1) * page_size
         
-        # Aplicar paginación y ejecutar query
-        listings = db.scalars(query.order_by(MarketplaceListing.created_at.desc()).offset(offset).limit(page_size)).unique().all()
+        if order_by == "price_asc":
+            query = query.order_by(MarketplaceListing.price.asc())
+        elif order_by == "price_desc":
+            query = query.order_by(MarketplaceListing.price.desc())
+        else:
+            query = query.order_by(MarketplaceListing.created_at.desc())
         
-        # 🔧 PROCESAR FOTOS DE PERFIL: Convertir bytes a base64
+        listings = db.scalars(query.offset(offset).limit(page_size)).unique().all()
+        
         for listing in listings:
-            # Procesar foto del vendedor si existe
-            process_nested_user_photo(listing, 'seller', 'profilePhoto')
+            process_nested_user_photo(listing, settings.BACKEND_URL)
         
-        # Crear respuesta
         response_data = PaginatedMarketplaceListings(
-            items=[MarketplaceListingResponse.model_validate(listing) for listing in listings],
+            items=[ListingResponse.model_validate(listing) for listing in listings],
             total=total,
             page=page,
             pageSize=page_size,
-            totalPages=total_pages,
+            totalPages=total_pages
         )
-        return response_data
 
+        return response_data
+        
     except Exception as e:
-        print(f"Error al obtener listados del marketplace: {e}")
+        logger.error(f"Error al obtener listados del marketplace: {e}", exc_info=True)
         traceback.print_exc() 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -103,42 +121,39 @@ async def get_active_listings(
         )
 
 
-# --- ENDPOINT POST (Para vender un ticket) ---
-@router.post("/listings", response_model=MarketplaceListingResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/listings", response_model=ListingResponse, status_code=status.HTTP_201_CREATED)
 async def create_listing(
-    listing_data: MarketplaceListingCreate,
+    listing_data: CreateListingRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    # 1. VALIDACIÓN: Buscar el ticket que el usuario quiere vender
+    """
+    Crear un nuevo listado de reventa en el marketplace.
+    """
     ticket_to_sell = db.query(Ticket).filter(
         Ticket.id == listing_data.ticketId
     ).options(
-        joinedload(Ticket.event) # Cargar el evento para obtener título y fecha
+        joinedload(Ticket.event)
     ).first()
 
-    # 2. VALIDACIÓN: ¿Existe el ticket?
     if not ticket_to_sell:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="El ticket que intentas vender no existe."
         )
 
-    # 3. VALIDACIÓN: ¿El ticket le pertenece al usuario?
     if ticket_to_sell.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No puedes vender un ticket que no te pertenece."
         )
 
-    # 4. VALIDACIÓN: ¿El ticket está ACTIVO?
     if ticket_to_sell.status != TicketStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"No puedes vender un ticket que ya está {ticket_to_sell.status.value}."
         )
 
-    # 6. VALIDACIÓN: ¿El ticket ya está en reventa?
     existing_listing = db.query(MarketplaceListing).filter(
         MarketplaceListing.ticket_id == ticket_to_sell.id,
         MarketplaceListing.status == ListingStatus.ACTIVE
@@ -150,7 +165,6 @@ async def create_listing(
             detail="Este ticket ya está publicado en el marketplace."
         )
 
-    # 7. CREACIÓN: Si todo está bien, creamos el listado
     new_listing = MarketplaceListing(
         title=f"Reventa de entrada para: {ticket_to_sell.event.title}",
         description=listing_data.description,
@@ -168,71 +182,193 @@ async def create_listing(
     db.commit()
     db.refresh(new_listing)
     
-    # 🔧 Procesar foto del vendedor antes de retornar
     process_nested_user_photo(new_listing, 'seller', 'profilePhoto')
     
     return new_listing
 
 
-# --- ENDPOINT POST (Para comprar un ticket) ---
-@router.post("/listings/{listing_id}/buy", response_model=dict)
-async def buy_listing(
+@router.post("/listings/{listing_id}/create-preference", response_model=MarketplacePurchaseResponse)
+async def create_marketplace_preference(
     listing_id: UUID,
+    request: MarketplacePurchaseRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_attendee_user)
 ):
     """
-    Inicia el proceso de compra de un ticket en reventa.
-    (Versión simplificada que simula un pago exitoso)
+    Crea una preferencia de pago de MercadoPago para comprar un ticket del marketplace.
+    El dinero va al vendedor con una comisión para la plataforma.
     """
     
     listing = db.query(MarketplaceListing).filter(
         MarketplaceListing.id == listing_id,
         MarketplaceListing.status == ListingStatus.ACTIVE
     ).options(
-        joinedload(MarketplaceListing.ticket).joinedload(Ticket.event)
+        joinedload(MarketplaceListing.ticket).joinedload(Ticket.event),
+        joinedload(MarketplaceListing.seller)
     ).first()
 
     if not listing:
-        raise HTTPException(status_code=404, detail="Este listado no está disponible.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Este listado no está disponible."
+        )
 
     if listing.seller_id == current_user.id:
-        raise HTTPException(status_code=400, detail="No puedes comprar tu propio ticket.")
-
-    # --- SIMULACIÓN DE PAGO ---
-    # 1. Crear el registro del Pago
-    new_payment = Payment(
-        amount=listing.price,
-        paymentMethod=PaymentMethod.CREDIT_CARD,
-        transactionId=f"txn_resale_{uuid.uuid4()}",
-        status=PaymentStatus.COMPLETED,
-        paymentDate=datetime.utcnow(),
-        user_id=current_user.id
-    )
-    db.add(new_payment)
-    db.flush()
-
-    # 2. Llamar al servicio de transferencia atómica
-    try:
-        service = MarketplaceService(db)
-        new_ticket = service.transfer_ticket_on_purchase(
-            listing=listing,
-            buyer=current_user,
-            payment_id=new_payment.id
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No puedes comprar tu propio ticket."
         )
-        
-        return {
-            "success": True, 
-            "message": "¡Compra completada! Se ha generado un nuevo ticket.",
-            "newTicketId": new_ticket.id,
-            "listingId": listing.id
-        }
+
+    seller = listing.seller
+    if not seller.isMercadopagoConnected:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El vendedor no ha conectado su cuenta de MercadoPago."
+        )
+
+    try:
+        items_list = [{
+            "title": f"{listing.title}",
+            "quantity": 1,
+            "unit_price": float(listing.price),
+            "currency_id": "PEN"
+        }]
+
+        # Calcular comisión de la plataforma (5%)
+        platform_fee = Decimal(str(listing.price)) * Decimal("0.05")
+
+        payment_service = PaymentService()
+        preference = payment_service.create_marketplace_preference(
+            listing_id=str(listing.id),
+            items=items_list,
+            buyer_email=current_user.email,
+            buyer_id=str(current_user.id),
+            seller=seller,
+            platform_fee=platform_fee
+        )
+
+        logger.info(f"✅ Preferencia de marketplace creada: {preference['id']} para listing {listing.id}")
+
+        return MarketplacePurchaseResponse(
+            listingId=listing.id,
+            init_point=preference["init_point"],
+            preferenceId=preference["id"]
+        )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en la transferencia: {e}")
+        logger.error(f"❌ Error al crear preferencia de marketplace: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al crear la preferencia de pago: {str(e)}"
+        )
 
 
-# --- ENDPOINT DELETE (Para retirar un ticket del marketplace) ---
+@router.post("/webhook")
+async def marketplace_webhook(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    Recibe notificaciones de pago del marketplace.
+    Procesa la transferencia del ticket cuando el pago es aprobado.
+    """
+    try:
+        body = await request.json()
+        logger.info(f"🔔 Webhook marketplace recibido: {body}")
+        
+        topic = body.get("topic")
+        action = body.get("action")
+        
+        if topic == "payment" or action == "payment.created":
+            payment_id = body.get("data", {}).get("id")
+            if not payment_id:
+                logger.warning("⚠️ Webhook sin payment_id")
+                return {"status": "ok"}
+
+            try:
+                sdk = mercadopago.SDK(settings.MERCADOPAGO_PRODUCER_TOKEN)
+                payment_data = sdk.payment().get(payment_id)
+                
+                if payment_data["status"] != 200:
+                    logger.error(f"❌ Error al consultar pago {payment_id}: {payment_data}")
+                    raise HTTPException(status_code=500, detail="Error al consultar pago")
+                
+                payment_info = payment_data["response"]
+                status_detail = payment_info.get("status")
+                external_reference = payment_info.get("external_reference")
+
+                if not external_reference:
+                    logger.warning(f"⚠️ Pago {payment_id} sin external_reference")
+                    return {"status": "ok"}
+
+                # Parsear el external_reference
+                # Formato: "LISTING_{listing_id}_BUYER_{buyer_id}"
+                parts = external_reference.split("_")
+                if len(parts) != 4 or parts[0] != "LISTING" or parts[2] != "BUYER":
+                    logger.error(f"❌ Formato de external_reference inválido: {external_reference}")
+                    return {"status": "error", "message": "Formato de external_reference inválido"}
+                
+                listing_id = parts[1]
+                buyer_id = parts[3]
+
+                listing = db.query(MarketplaceListing).filter(
+                    MarketplaceListing.id == listing_id
+                ).options(
+                    joinedload(MarketplaceListing.ticket)
+                ).first()
+                
+                if not listing:
+                    logger.error(f"❌ Listing {listing_id} no encontrado")
+                    raise HTTPException(status_code=404, detail=f"Listing {listing_id} no encontrado")
+
+                buyer = db.query(User).filter(User.id == buyer_id).first()
+                
+                if not buyer:
+                    logger.error(f"❌ Comprador {buyer_id} no encontrado")
+                    raise HTTPException(status_code=404, detail="Comprador no encontrado")
+
+                if status_detail == "approved":
+                    logger.info(f"✅ Pago aprobado para listing {listing.id}")
+                    
+                    new_payment = Payment(
+                        amount=listing.price,
+                        paymentMethod=PaymentMethod.MERCADOPAGO,
+                        transactionId=str(payment_info["id"]),
+                        status=PaymentStatus.COMPLETED,
+                        paymentDate=datetime.utcnow(),
+                        user_id=buyer.id
+                    )
+                    db.add(new_payment)
+                    db.flush()
+
+                    service = MarketplaceService(db)
+                    new_ticket = service.transfer_ticket_on_purchase(
+                        listing=listing,
+                        buyer=buyer,
+                        payment_id=new_payment.id
+                    )
+                    
+                    db.commit()
+                    logger.info(f"✅ Ticket transferido exitosamente a {buyer.email}")
+                
+                elif status_detail == "rejected":
+                    logger.info(f"⚠️ Pago rechazado para listing {listing.id}")
+                
+                elif status_detail == "pending":
+                    logger.info(f"⏳ Pago pendiente para listing {listing.id}")
+
+            except Exception as e:
+                db.rollback()
+                logger.error(f"❌ Error procesando webhook de marketplace: {str(e)}")
+                raise HTTPException(status_code=500, detail="Error al procesar webhook")
+
+        return {"status": "ok"}
+
+    except Exception as e:
+        logger.error(f"❌ Error general en webhook marketplace: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+
 @router.delete("/listings/{listing_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def cancel_listing(
     listing_id: UUID,
@@ -241,10 +377,8 @@ async def cancel_listing(
 ):
     """
     Cancela/retira un listing del marketplace.
-    Solo el vendedor puede cancelar su propio listing.
     """
     
-    # 1. Buscar el listing
     listing = db.query(MarketplaceListing).filter(
         MarketplaceListing.id == listing_id
     ).options(
@@ -257,25 +391,21 @@ async def cancel_listing(
             detail="El listing no existe."
         )
     
-    # 2. Verificar que el usuario sea el vendedor
     if listing.seller_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No puedes cancelar un listing que no te pertenece."
         )
     
-    # 3. Verificar que el listing esté activo
     if listing.status != ListingStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"No puedes cancelar un listing que está {listing.status.value}."
         )
     
-    # 4. Cancelar el listing y reactivar el ticket
     try:
         listing.status = ListingStatus.CANCELLED
         
-        # Reactivar el ticket del vendedor
         ticket = listing.ticket
         ticket.status = TicketStatus.ACTIVE
         ticket.isValid = True
@@ -284,7 +414,7 @@ async def cancel_listing(
         db.add(ticket)
         db.commit()
         
-        return None  # 204 No Content
+        return None
         
     except Exception as e:
         db.rollback()
@@ -292,3 +422,29 @@ async def cancel_listing(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al cancelar el listing: {e}"
         )
+@router.get("/listings/{listing_id}", response_model=ListingResponse)
+async def get_listing(
+    listing_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Obtener el detalle de un listado específico del marketplace.
+    """
+    listing = db.query(MarketplaceListing).filter(
+        MarketplaceListing.id == listing_id
+    ).options(
+        joinedload(MarketplaceListing.seller),
+        joinedload(MarketplaceListing.event),
+        joinedload(MarketplaceListing.ticket).joinedload(Ticket.ticket_type)
+    ).first()
+
+    if not listing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Listado no encontrado"
+        )
+    
+    # Procesar la URL de la foto del vendedor
+    process_nested_user_photo(listing, settings.BACKEND_URL)
+    
+    return listing

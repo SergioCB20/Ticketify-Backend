@@ -13,6 +13,7 @@ class PurchaseStatus(str, enum.Enum):
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
     REFUNDED = "REFUNDED"
+    REJECTED = "REJECTED"
 
 class PaymentMethod(str, enum.Enum):
     CREDIT_CARD = "CREDIT_CARD"
@@ -26,7 +27,9 @@ class Purchase(Base):
     
     # Primary key
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-
+    
+    # MercadoPago reference
+    mercadopago_preference_id = Column(String(255), nullable=True, index=True)
     
     # Purchase details
     total_amount = Column(Numeric(10, 2), nullable=False)
@@ -71,16 +74,18 @@ class Purchase(Base):
     # Foreign keys
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     event_id = Column(UUID(as_uuid=True), ForeignKey("events.id"), nullable=False)
-    ticket_type_id = Column(UUID(as_uuid=True), ForeignKey("ticket_types.id"), nullable=False)
+    ticket_type_id = Column(UUID(as_uuid=True), ForeignKey("ticket_types.id"), nullable=True)  # Puede ser null para múltiples tipos
     promotion_id = Column(UUID(as_uuid=True), ForeignKey("promotions.id"), nullable=True)
     payment_id = Column(UUID(as_uuid=True), ForeignKey("payments.id"), nullable=True)
+    
     # Relationships
     user = relationship("User", back_populates="purchases")
     event = relationship("Event", back_populates="purchases")
-    ticket_type = relationship("TicketType")
+    ticket_type = relationship("TicketType", foreign_keys=[ticket_type_id])
     promotion = relationship("Promotion", back_populates="purchases")
     tickets = relationship("Ticket", back_populates="purchase", cascade="all, delete-orphan")
     payment = relationship("Payment")
+    
     def __repr__(self):
         return f"<Purchase(id='{self.id}', status='{self.status}', total='{self.total_amount}')>"
     
@@ -126,7 +131,7 @@ class Purchase(Base):
             "refundReason": self.refund_reason,
             "userId": str(self.user_id),
             "eventId": str(self.event_id),
-            "ticketTypeId": str(self.ticket_type_id),
+            "ticketTypeId": str(self.ticket_type_id) if self.ticket_type_id else None,
             "promotionId": str(self.promotion_id) if self.promotion_id else None,
             "isCompleted": self.is_completed,
             "canBeCancelled": self.can_be_cancelled,

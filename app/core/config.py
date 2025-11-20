@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     API_VERSION: str = "v1"
 
+    # URLs
+    FRONTEND_URL: str = "https://initiated-kurt-processing-flat.trycloudflare.com"
+    BACKEND_URL: str = "https://mindi-defervescent-then.ngrok-free.dev"
+
     # Database
     DATABASE_URL: str
 
@@ -28,7 +32,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     # CORS
-    ALLOWED_HOSTS: List[str] = ["http://localhost:3000"]
+    ALLOWED_HOSTS: List[str] = ["*"] #cambiar en produccion, solo es para que no falle localmente xd (muchos dominios nuevos)
+
     
     # NGROK
     NGROK_URL: str = ""  # URL de ngrok para desarrollo
@@ -37,6 +42,7 @@ class Settings(BaseSettings):
     MERCADOPAGO_ACCESS_TOKEN: str
     MERCADOPAGO_PUBLIC_KEY: str
     MERCADOPAGO_SANDBOX: bool = True
+    MERCADOPAGO_PRODUCER_TOKEN: str
     
     # MercadoPago OAuth
     MERCADOPAGO_CLIENT_ID: str
@@ -87,8 +93,6 @@ class Settings(BaseSettings):
             ngrok_url = os.getenv("NGROK_URL", "")
             return v.replace("${NGROK_URL}", ngrok_url)
         return v
-
-
 
 # Instancia global
 settings = Settings()

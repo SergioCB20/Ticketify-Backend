@@ -1,8 +1,8 @@
-"""Initial database setup
+"""nueva migracion
 
-Revision ID: 976efff3a29b
+Revision ID: ffb7293ddaf3
 Revises: 
-Create Date: 2025-11-09 23:59:39.439165
+Create Date: 2025-11-18 22:14:15.515435
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '976efff3a29b'
+revision = 'ffb7293ddaf3'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -66,13 +66,21 @@ def upgrade() -> None:
     sa.Column('firstName', sa.String(length=100), nullable=False),
     sa.Column('lastName', sa.String(length=100), nullable=False),
     sa.Column('phoneNumber', sa.String(length=20), nullable=True),
-    sa.Column('documentId', sa.String(length=50), nullable=True),
     sa.Column('documentType', sa.Enum('DNI', 'CE', 'PASSPORT', name='documenttype'), nullable=True),
+    sa.Column('documentId', sa.String(length=50), nullable=True),
     sa.Column('country', sa.String(length=100), nullable=True),
     sa.Column('city', sa.String(length=100), nullable=True),
     sa.Column('gender', sa.Enum('MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY', name='gender'), nullable=True),
     sa.Column('profilePhoto', sa.LargeBinary(), nullable=True),
     sa.Column('profilePhotoMimeType', sa.String(length=50), nullable=True),
+    sa.Column('mercadopagoUserId', sa.String(length=255), nullable=True),
+    sa.Column('mercadopagoPublicKey', sa.String(length=255), nullable=True),
+    sa.Column('mercadopagoAccessToken', sa.Text(), nullable=True),
+    sa.Column('mercadopagoRefreshToken', sa.Text(), nullable=True),
+    sa.Column('mercadopagoTokenExpires', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('isMercadopagoConnected', sa.Boolean(), nullable=False),
+    sa.Column('mercadopagoConnectedAt', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('mercadopagoEmail', sa.String(length=255), nullable=True),
     sa.Column('isActive', sa.Boolean(), nullable=False),
     sa.Column('createdAt', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('lastLogin', sa.DateTime(timezone=True), nullable=True),
@@ -81,6 +89,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_users_documentId'), 'users', ['documentId'], unique=True)
     op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)
     op.create_index(op.f('ix_users_id'), 'users', ['id'], unique=False)
+    op.create_index(op.f('ix_users_mercadopagoUserId'), 'users', ['mercadopagoUserId'], unique=True)
     op.create_table('audit_logs',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('action', sa.String(length=100), nullable=False),
@@ -103,7 +112,7 @@ def upgrade() -> None:
     sa.Column('venue', sa.String(length=200), nullable=False),
     sa.Column('totalCapacity', sa.Integer(), nullable=False),
     sa.Column('status', sa.Enum('DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED', name='eventstatus'), nullable=False),
-    sa.Column('multimedia', sa.ARRAY(sa.String()), nullable=True),
+    sa.Column('photo', sa.LargeBinary(), nullable=True),
     sa.Column('createdAt', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updatedAt', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('organizer_id', sa.UUID(), nullable=False),
@@ -236,7 +245,7 @@ def upgrade() -> None:
     sa.Column('created_by_id', sa.UUID(), nullable=False),
     sa.Column('event_id', sa.UUID(), nullable=False),
     sa.ForeignKeyConstraint(['created_by_id'], ['users.id'], ),
-    sa.ForeignKeyConstraint(['event_id'], ['events.id'], ),
+    sa.ForeignKeyConstraint(['event_id'], ['events.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_promotions_code'), 'promotions', ['code'], unique=True)
@@ -279,6 +288,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_transactions_id'), 'transactions', ['id'], unique=False)
     op.create_table('purchases',
     sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('mercadopago_preference_id', sa.String(length=255), nullable=True),
     sa.Column('total_amount', sa.Numeric(precision=10, scale=2), nullable=False),
     sa.Column('subtotal', sa.Numeric(precision=10, scale=2), nullable=False),
     sa.Column('tax_amount', sa.Numeric(precision=10, scale=2), nullable=False),
@@ -286,7 +296,7 @@ def upgrade() -> None:
     sa.Column('discount_amount', sa.Numeric(precision=10, scale=2), nullable=False),
     sa.Column('quantity', sa.Integer(), nullable=False),
     sa.Column('unit_price', sa.Numeric(precision=10, scale=2), nullable=False),
-    sa.Column('status', sa.Enum('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED', 'REFUNDED', name='purchasestatus'), nullable=False),
+    sa.Column('status', sa.Enum('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED', 'REFUNDED', 'REJECTED', name='purchasestatus'), nullable=False),
     sa.Column('payment_method', sa.Enum('CREDIT_CARD', 'DEBIT_CARD', 'MERCADOPAGO', 'PAYPAL', 'BANK_TRANSFER', name='paymentmethod'), nullable=True),
     sa.Column('payment_reference', sa.String(length=255), nullable=True),
     sa.Column('buyer_email', sa.String(length=255), nullable=False),
@@ -305,7 +315,7 @@ def upgrade() -> None:
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('user_id', sa.UUID(), nullable=False),
     sa.Column('event_id', sa.UUID(), nullable=False),
-    sa.Column('ticket_type_id', sa.UUID(), nullable=False),
+    sa.Column('ticket_type_id', sa.UUID(), nullable=True),
     sa.Column('promotion_id', sa.UUID(), nullable=True),
     sa.Column('payment_id', sa.UUID(), nullable=True),
     sa.ForeignKeyConstraint(['event_id'], ['events.id'], ),
@@ -316,6 +326,7 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_purchases_id'), 'purchases', ['id'], unique=False)
+    op.create_index(op.f('ix_purchases_mercadopago_preference_id'), 'purchases', ['mercadopago_preference_id'], unique=False)
     op.create_table('tickets',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('price', sa.Numeric(precision=10, scale=2), nullable=False),
@@ -439,6 +450,7 @@ def downgrade() -> None:
     op.drop_table('disputes')
     op.drop_index(op.f('ix_tickets_id'), table_name='tickets')
     op.drop_table('tickets')
+    op.drop_index(op.f('ix_purchases_mercadopago_preference_id'), table_name='purchases')
     op.drop_index(op.f('ix_purchases_id'), table_name='purchases')
     op.drop_table('purchases')
     op.drop_index(op.f('ix_transactions_id'), table_name='transactions')
@@ -468,6 +480,7 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_audit_logs_timestamp'), table_name='audit_logs')
     op.drop_index(op.f('ix_audit_logs_id'), table_name='audit_logs')
     op.drop_table('audit_logs')
+    op.drop_index(op.f('ix_users_mercadopagoUserId'), table_name='users')
     op.drop_index(op.f('ix_users_id'), table_name='users')
     op.drop_index(op.f('ix_users_email'), table_name='users')
     op.drop_index(op.f('ix_users_documentId'), table_name='users')

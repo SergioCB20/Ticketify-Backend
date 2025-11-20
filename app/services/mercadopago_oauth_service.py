@@ -17,6 +17,8 @@ class MercadoPagoOAuthService:
         self.user_repo = UserRepository(db)
         
         # MercadoPago OAuth endpoints
+        # NOTA: Verifica si para Perú es .com.pe o .com. 
+        # Usualmente auth.mercadopago.com.pe redirige bien, pero el estándar es auth.mercadopago.com
         self.auth_url = "https://auth.mercadopago.com.pe/authorization"
         self.token_url = "https://api.mercadopago.com/oauth/token"
         self.user_info_url = "https://api.mercadopago.com/users/me"
@@ -27,7 +29,7 @@ class MercadoPagoOAuthService:
         self.redirect_uri = settings.MERCADOPAGO_REDIRECT_URI
     
     def get_authorization_url(self, user_id: str) -> str:
-        """Generate MercadoPago OAuth authorization URL with forced logout"""
+        """Generate MercadoPago OAuth authorization URL"""
         import time
         from urllib.parse import quote
         
@@ -38,17 +40,17 @@ class MercadoPagoOAuthService:
             "platform_id": "mp",
             "state": user_id,
             "redirect_uri": self.redirect_uri,
-            "_t": str(int(time.time()))  # Timestamp para evitar cache
+            # 'force_verify': 'true' # Opcional: Si realmente quieres forzar login cada vez
         }
         
+        # Construir la URL limpia y directa
         query_string = "&".join([f"{k}={v}" for k, v in params.items()])
         oauth_url = f"{self.auth_url}?{query_string}"
         
-        # Forzar logout de MercadoLibre/MercadoPago antes de OAuth
-        # Esto permite al usuario elegir qué cuenta vincular
-        logout_url = f"https://mercadolibre.com/jms/mpe/lgz/logout?go={quote(oauth_url)}"
-        
-        return logout_url
+        # --- CORRECCIÓN: Eliminamos el wrapper de logout ---
+        # Devolvemos directamente la URL de autorización.
+        # Esto es más estable y estándar.
+        return oauth_url
     
     def exchange_code_for_tokens(self, code: str) -> Dict:
         """Exchange authorization code for access and refresh tokens"""
@@ -61,7 +63,13 @@ class MercadoPagoOAuthService:
         }
         
         try:
+            # Hacemos la petición POST para obtener los tokens
             response = requests.post(self.token_url, json=payload)
+            
+            # Si hay error en la respuesta HTTP, lanzamos excepción
+            if not response.ok:
+                print(f"Error MP OAuth: {response.text}") # Debug log
+                
             response.raise_for_status()
             
             data = response.json()
@@ -116,10 +124,14 @@ class MercadoPagoOAuthService:
                 detail="Usuario no encontrado"
             )
         
+        # 1. Obtener tokens
         token_data = self.exchange_code_for_tokens(code)
+        
+        # 2. Obtener info del usuario (para guardar el email de MP)
         user_info = self.get_user_info(token_data["access_token"])
         
-        # Verificar si esta cuenta de MP ya está vinculada a otro usuario
+        # 3. Verificar si esta cuenta de MP ya está vinculada a otro usuario
+        # (Evita duplicidad de cuentas vendedoras)
         existing_mp_user = self.db.query(User).filter(
             User.mercadopagoUserId == token_data["user_id"],
             User.id != user_id
@@ -131,6 +143,7 @@ class MercadoPagoOAuthService:
                 detail="account_already_linked"
             )
         
+        # 4. Guardar todo en el usuario
         user.connect_mercadopago(
             user_id=token_data["user_id"],
             public_key=token_data["public_key"],

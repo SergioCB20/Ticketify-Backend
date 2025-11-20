@@ -91,7 +91,7 @@ class AdminService:
             lastName=user.lastName,
             phoneNumber=user.phoneNumber,
             documentId=user.documentId,
-            profilePhoto=user.profilePhoto,
+            profilePhoto=user.get_profile_photo_base64(),  # 🔧 CORREGIDO: usar método de conversión
             isActive=user.isActive,
             roles=roles,
             createdAt=user.createdAt,

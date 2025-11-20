@@ -1,74 +1,53 @@
-"""
-Schemas para la compra directa de tickets
-"""
 from pydantic import BaseModel, Field, validator
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID
+from datetime import datetime
 from decimal import Decimal
 
-
-class PurchaseTicketRequest(BaseModel):
-    """Request para comprar tickets de un evento"""
-    eventId: UUID = Field(..., description="ID del evento")
+class TicketTypeSelection(BaseModel):
+    """Selección de tipos de tickets para compra"""
     ticketTypeId: UUID = Field(..., description="ID del tipo de ticket")
-    quantity: int = Field(..., ge=1, le=10, description="Cantidad de tickets (máximo 10)")
+    quantity: int = Field(..., ge=1, description="Cantidad a comprar")
+
+class CreatePreferenceRequest(BaseModel):
+    """Request para crear preferencia de pago"""
+    eventId: UUID = Field(..., description="ID del evento")
+    tickets: List[TicketTypeSelection] = Field(..., description="Tickets a comprar")
+    promotionCode: Optional[str] = Field(None, description="Código promocional (opcional)")
+    
+    @validator('tickets')
+    def tickets_not_empty(cls, v):
+        if not v:
+            raise ValueError('Debe seleccionar al menos un ticket')
+        return v
+
+class CreatePreferenceResponse(BaseModel):
+    """Response con el init_point de MercadoPago"""
+    purchaseId: UUID
+    initPoint: str = Field(..., alias="init_point")
+    preferenceId: str
     
     class Config:
         populate_by_name = True
 
-
-class PaymentData(BaseModel):
-    """Datos de pago simulados (ficticios)"""
-    cardNumber: str = Field(..., min_length=13, max_length=19, description="Número de tarjeta")
-    cardholderName: str = Field(..., min_length=3, max_length=100, description="Nombre del titular")
-    expiryMonth: str = Field(..., pattern=r'^(0[1-9]|1[0-2])$', description="Mes de expiración (01-12)")
-    expiryYear: str = Field(..., pattern=r'^\d{2}$', description="Año de expiración (YY)")
-    cvv: str = Field(..., pattern=r'^\d{3,4}$', description="CVV")
-    
-    @validator('cardNumber')
-    def validate_card_number(cls, v):
-        """Validación básica del número de tarjeta (solo dígitos)"""
-        digits_only = ''.join(filter(str.isdigit, v))
-        if len(digits_only) < 13 or len(digits_only) > 19:
-            raise ValueError('Número de tarjeta inválido')
-        return digits_only
-    
-    class Config:
-        populate_by_name = True
-
-
-class ProcessPaymentRequest(BaseModel):
-    """Request completo para procesar el pago"""
-    purchase: PurchaseTicketRequest
-    payment: PaymentData
-    
-    class Config:
-        populate_by_name = True
-
-
-class TicketResponse(BaseModel):
-    """Respuesta con información del ticket generado"""
+class PurchaseDetailResponse(BaseModel):
+    """Detalle de una compra"""
     id: UUID
-    eventId: UUID
-    ticketTypeId: UUID
-    price: float
-    qrCode: str
+    totalAmount: Decimal
+    subtotal: Decimal
+    taxAmount: Decimal
+    serviceFee: Decimal
+    discountAmount: Decimal
+    quantity: int
     status: str
-    purchaseDate: str
+    paymentMethod: Optional[str]
+    paymentReference: Optional[str]
+    buyerEmail: str
+    purchaseDate: datetime
+    paymentDate: Optional[datetime]
+    eventId: UUID
+    eventTitle: str
+    tickets: List[dict]
     
     class Config:
         from_attributes = True
-        populate_by_name = True
-
-
-class PurchaseResponse(BaseModel):
-    """Respuesta tras completar una compra"""
-    success: bool
-    message: str
-    purchaseId: UUID
-    paymentId: UUID
-    tickets: list[TicketResponse]
-    totalAmount: float
-    
-    class Config:
-        populate_by_name = True
