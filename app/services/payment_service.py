@@ -69,7 +69,10 @@ class PaymentService:
     ) -> dict:
         """
         Crea una preferencia de pago para una compra en el Marketplace.
-        El dinero va a la cuenta del VENDEDOR, con una comisión para la plataforma.
+        ESTRATEGIA SIMPLIFICADA: El dinero va a la plataforma (igual que eventos)
+        y luego se procesa el pago al vendedor manualmente.
+        
+        Esto evita el error 403 de MercadoPago por policies de application_fee.
         
         Args:
             listing_id: ID del listing del marketplace
@@ -77,21 +80,18 @@ class PaymentService:
             buyer_email: Email del comprador
             buyer_id: ID del comprador
             seller: Usuario vendedor con cuenta de MercadoPago conectada
-            platform_fee: Comisión que se queda la plataforma
+            platform_fee: Comisión que se queda la plataforma (para referencia)
             
         Returns:
             dict: Respuesta de MercadoPago con la preferencia creada
         """
         
-        seller_token = seller.get_decrypted_access_token()
-        if not seller_token:
-            logger.error(f"❌ Vendedor {seller.id} no tiene token de MercadoPago")
-            raise Exception("El vendedor no tiene una cuenta de MercadoPago conectada.")
-
         logger.info(f"📝 Creando preferencia de marketplace para listing {listing_id}")
+        logger.info(f"💰 Monto total: {items[0]['unit_price']}, Comisión plataforma: {float(platform_fee)}")
         
-        seller_sdk = mercadopago.SDK(seller_token)
-
+        # CAMBIO IMPORTANTE: Usar el SDK de la PLATAFORMA en lugar del vendedor
+        # Esto evita errores de policies y simplifica el flujo
+        
         preference_data = {
             "items": items,
             "payer": {
@@ -107,19 +107,21 @@ class PaymentService:
             "notification_url": f"{settings.BACKEND_URL}/api/marketplace/webhook",
             "statement_descriptor": "Ticketify Marketplace",
             "expires": False,
-            "binary_mode": True,
-            "application_fee": float(platform_fee)
+            "binary_mode": True
         }
         
         logger.debug(f"Marketplace preference data: {preference_data}")
         
-        preference_response = seller_sdk.preference().create(preference_data)
+        # Usar el SDK de la plataforma (igual que eventos)
+        preference_response = self.platform_sdk.preference().create(preference_data)
         
         if preference_response["status"] not in [200, 201]:
             logger.error(f"❌ Error al crear preferencia de marketplace: {preference_response}")
             raise Exception(f"Error al crear preferencia MP: {preference_response.get('response')}")
 
         logger.info(f"✅ Preferencia de marketplace creada: {preference_response['response']['id']}")
+        logger.info(f"💡 Nota: El pago irá a la cuenta de la plataforma. La transferencia al vendedor se procesará después.")
+        
         return preference_response["response"]
     
     

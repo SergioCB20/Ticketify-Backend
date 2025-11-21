@@ -251,7 +251,7 @@ async def create_marketplace_preference(
 
         return MarketplacePurchaseResponse(
             listingId=listing.id,
-            init_point=preference["init_point"],
+            initPoint=preference["init_point"],
             preferenceId=preference["id"]
         )
 
@@ -346,12 +346,16 @@ async def marketplace_webhook(
                         "payment_type_id": payment_info.get("payment_type_id")
                     }
                     
+                    # Calcular comisión de la plataforma (5%)
+                    platform_fee = Decimal(str(listing.price)) * Decimal("0.05")
+                    
                     # Usar el servicio para procesar el pago y transferir el ticket
                     service = MarketplaceService(db)
                     new_ticket = service.create_marketplace_payment_and_transfer(
                         listing=listing,
                         buyer=buyer,
-                        payment_info=payment_info_dict
+                        payment_info=payment_info_dict,
+                        platform_fee=platform_fee
                     )
                     
                     logger.info(f"✅ Ticket transferido exitosamente a {buyer.email}")

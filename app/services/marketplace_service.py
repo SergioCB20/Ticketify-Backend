@@ -24,7 +24,8 @@ class MarketplaceService:
         self,
         listing: MarketplaceListing,
         buyer: User,
-        payment_info: dict
+        payment_info: dict,
+        platform_fee: Decimal = None
     ) -> Ticket:
         """
         Procesa el pago del marketplace y transfiere el ticket al comprador.
@@ -40,6 +41,14 @@ class MarketplaceService:
         """
         try:
             logger.info(f"🔄 Iniciando transferencia de marketplace para listing {listing.id}")
+            
+            # Calcular comisión si no se proveyó
+            if platform_fee is None:
+                platform_fee = Decimal(str(listing.price)) * Decimal("0.05")  # 5% de comisión
+            
+            logger.info(f"💰 Precio total: S/ {listing.price}")
+            logger.info(f"💸 Comisión plataforma (5%): S/ {platform_fee}")
+            logger.info(f"👤 Pago al vendedor: S/ {listing.price - platform_fee}")
             
             # 1. Crear el registro de Payment
             new_payment = Payment(
@@ -113,6 +122,10 @@ class MarketplaceService:
             self.db.refresh(new_ticket)
             
             logger.info(f"✅ Transferencia de marketplace completada exitosamente")
+            logger.info(f"💰 IMPORTANTE: El pago está en la cuenta de la plataforma")
+            logger.info(f"💸 Monto del vendedor: S/ {listing.price - platform_fee} (después de comisión 5%)")
+            logger.info(f"📋 TODO: Procesar transferencia manual al vendedor {listing.seller.email}")
+            logger.info(f"👤 Vendedor ID: {listing.seller_id}, Buyer ID: {buyer.id}")
             
             return new_ticket
             
@@ -120,6 +133,8 @@ class MarketplaceService:
             self.db.rollback()
             logger.error(f"❌ Error en transferencia de marketplace: {str(e)}")
             logger.error(f"❌ Error type: {type(e).__name__}")
+            import traceback
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
             raise Exception(f"Error al procesar la compra del marketplace: {str(e)}")
 
     def buy_ticket(self, db: Session, listing_id: UUID, buyer: User) -> MarketplaceListing:

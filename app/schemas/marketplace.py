@@ -72,7 +72,7 @@ class MarketplacePurchaseRequest(BaseModel):
 class MarketplacePurchaseResponse(BaseModel):
     """Respuesta con la URL de pago de MercadoPago para marketplace"""
     listingId: UUID = Field(..., description="ID del listing")
-    init_point: str = Field(..., description="URL de MercadoPago para completar el pago")
+    initPoint: str = Field(..., description="URL de MercadoPago para completar el pago")
     preferenceId: str = Field(..., description="ID de la preferencia creada")
 
     # --- SINTAXIS ACTUALIZADA ---
