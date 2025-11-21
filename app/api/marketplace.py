@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import select, func, or_
 from typing import List, Optional
 from uuid import UUID
-from datetime import timedelta, datetime 
+from datetime import timedelta, datetime, timezone
 from fastapi.responses import JSONResponse
 from app.core.database import get_db
 from app.core.dependencies import get_current_active_user, get_attendee_user
@@ -271,6 +271,7 @@ async def marketplace_webhook(
     """
     Recibe notificaciones de pago del marketplace.
     Procesa la transferencia del ticket cuando el pago es aprobado.
+    ACTUALIZADO: Sigue la misma lógica que purchases/webhook
     """
     try:
         body = await request.json()
@@ -279,6 +280,7 @@ async def marketplace_webhook(
         topic = body.get("topic")
         action = body.get("action")
         
+        # Solo procesar notificaciones de pago
         if topic == "payment" or action == "payment.created":
             payment_id = body.get("data", {}).get("id")
             if not payment_id:
@@ -286,6 +288,7 @@ async def marketplace_webhook(
                 return {"status": "ok"}
 
             try:
+                # Inicializar SDK de plataforma para consultar el pago
                 sdk = mercadopago.SDK(settings.MERCADOPAGO_PRODUCER_TOKEN)
                 payment_data = sdk.payment().get(payment_id)
                 
@@ -311,6 +314,7 @@ async def marketplace_webhook(
                 listing_id = parts[1]
                 buyer_id = parts[3]
 
+                # Buscar el listing en nuestra BBDD
                 listing = db.query(MarketplaceListing).filter(
                     MarketplaceListing.id == listing_id
                 ).options(
@@ -321,38 +325,41 @@ async def marketplace_webhook(
                     logger.error(f"❌ Listing {listing_id} no encontrado")
                     raise HTTPException(status_code=404, detail=f"Listing {listing_id} no encontrado")
 
+                # Buscar el comprador
                 buyer = db.query(User).filter(User.id == buyer_id).first()
                 
                 if not buyer:
                     logger.error(f"❌ Comprador {buyer_id} no encontrado")
                     raise HTTPException(status_code=404, detail="Comprador no encontrado")
 
+                # SI EL PAGO FUE APROBADO
                 if status_detail == "approved":
                     logger.info(f"✅ Pago aprobado para listing {listing.id}")
                     
-                    new_payment = Payment(
-                        amount=listing.price,
-                        paymentMethod=PaymentMethod.MERCADOPAGO,
-                        transactionId=str(payment_info["id"]),
-                        status=PaymentStatus.COMPLETED,
-                        paymentDate=datetime.utcnow(),
-                        user_id=buyer.id
-                    )
-                    db.add(new_payment)
-                    db.flush()
-
+                    # Preparar información del pago (igual que en purchases)
+                    payment_info_dict = {
+                        "id": payment_info["id"],
+                        "amount": payment_info["transaction_amount"],
+                        "status": payment_info["status"],
+                        "status_detail": payment_info.get("status_detail"),
+                        "payment_method_id": payment_info.get("payment_method_id"),
+                        "payment_type_id": payment_info.get("payment_type_id")
+                    }
+                    
+                    # Usar el servicio para procesar el pago y transferir el ticket
                     service = MarketplaceService(db)
-                    new_ticket = service.transfer_ticket_on_purchase(
+                    new_ticket = service.create_marketplace_payment_and_transfer(
                         listing=listing,
                         buyer=buyer,
-                        payment_id=new_payment.id
+                        payment_info=payment_info_dict
                     )
                     
-                    db.commit()
                     logger.info(f"✅ Ticket transferido exitosamente a {buyer.email}")
                 
+                # Manejar otros estados
                 elif status_detail == "rejected":
                     logger.info(f"⚠️ Pago rechazado para listing {listing.id}")
+                    # Opcional: marcar el listing como disponible de nuevo
                 
                 elif status_detail == "pending":
                     logger.info(f"⏳ Pago pendiente para listing {listing.id}")
@@ -422,6 +429,8 @@ async def cancel_listing(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al cancelar el listing: {e}"
         )
+
+
 @router.get("/listings/{listing_id}", response_model=ListingResponse)
 async def get_listing(
     listing_id: UUID,
