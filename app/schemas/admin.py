@@ -108,7 +108,60 @@ class AdminStats(BaseModel):
     totalEvents: int = Field(..., alias="totalEvents")
     totalTickets: int = Field(..., alias="totalTickets")
     recentRegistrations: int = Field(..., alias="recentRegistrations", description="Últimos 7 días")
-    
+
     model_config = ConfigDict(
         populate_by_name = True
+    )
+
+
+# ============= CATEGORÍAS =============
+
+class CreateCategoryRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=100, description="Nombre de la categoría")
+    description: Optional[str] = Field(None, description="Descripción de la categoría")
+    slug: str = Field(..., min_length=2, max_length=120, description="Slug único para URL")
+    icon: Optional[str] = Field(None, max_length=100, description="Emoji o nombre de icono")
+    color: Optional[str] = Field(None, pattern="^#[0-9A-Fa-f]{6}$", description="Color en formato hex (#RRGGBB)")
+    imageUrl: Optional[str] = Field(None, alias="imageUrl", max_length=500, description="URL de imagen")
+    isFeatured: bool = Field(default=False, alias="isFeatured", description="Categoría destacada")
+    sortOrder: int = Field(default=0, alias="sortOrder", description="Orden de visualización")
+
+    model_config = ConfigDict(
+        populate_by_name = True
+    )
+
+
+class UpdateCategoryRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=2, max_length=100)
+    description: Optional[str] = None
+    slug: Optional[str] = Field(None, min_length=2, max_length=120)
+    icon: Optional[str] = Field(None, max_length=100)
+    color: Optional[str] = Field(None, pattern="^#[0-9A-Fa-f]{6}$")
+    imageUrl: Optional[str] = Field(None, alias="imageUrl", max_length=500)
+    isFeatured: Optional[bool] = Field(None, alias="isFeatured")
+    sortOrder: Optional[int] = Field(None, alias="sortOrder")
+
+    model_config = ConfigDict(
+        populate_by_name = True
+    )
+
+
+class CategoryResponse(BaseModel):
+    id: str
+    name: str
+    description: Optional[str]
+    slug: str
+    icon: Optional[str]
+    color: Optional[str]
+    imageUrl: Optional[str] = Field(None, alias="imageUrl")
+    isFeatured: bool = Field(..., alias="isFeatured")
+    isActive: bool = Field(..., alias="isActive")
+    sortOrder: int = Field(..., alias="sortOrder")
+    eventCount: int = Field(..., alias="eventCount", description="Número de eventos en esta categoría")
+    createdAt: datetime = Field(..., alias="createdAt")
+    updatedAt: datetime = Field(..., alias="updatedAt")
+
+    model_config = ConfigDict(
+        populate_by_name = True,
+        from_attributes = True
     )
