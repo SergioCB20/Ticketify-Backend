@@ -292,3 +292,21 @@ async def upload_event_photo(
     updated_event = event_service.update_event_photo(event_id, photo_bytes)
 
     return updated_event
+
+@router.get("/{event_id}/panel", response_model=EventDetailResponse)
+async def get_event_panel(
+    event_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    event_service = EventService(db)
+    event = event_service.get_event_by_id(event_id)
+
+    # opcional: asegurar que solo el organizador vea su panel
+    if str(event.organizerId) != str(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No estás autorizado para ver este panel"
+        )
+
+    return event
