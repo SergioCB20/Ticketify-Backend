@@ -7,6 +7,7 @@ Importa todos los modelos de la aplicación
 from app.models.user import User, UserRole, AdminRole, user_roles, DocumentType, Gender
 from app.models.role import Role, role_permissions
 from app.models.permission import Permission
+from app.models.user_category_preference import UserCategoryPreference
 
 # Event models
 from app.models.event import Event, EventStatus
@@ -55,6 +56,7 @@ __all__ = [
     "Role",
     "role_permissions",
     "Permission",
+    "UserCategoryPreference",
     
     # Events
     "Event",
