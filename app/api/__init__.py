@@ -11,6 +11,8 @@ from .tickets import router as tickets_router
 from .purchases import router as purchases_router
 from .mercadopago import router as mercadopago_router
 from .emails import router as emails_router
+from .billing import router as billing_router
+from .webhooks import router as webhooks_router
 
 # Main API router
 api_router = APIRouter(prefix="/api")
@@ -28,4 +30,6 @@ api_router.include_router(tickets_router)
 api_router.include_router(purchases_router)
 api_router.include_router(mercadopago_router)
 api_router.include_router(emails_router)
+api_router.include_router(billing_router)
+api_router.include_router(webhooks_router)
 __all__ = ["api_router"]

@@ -1,0 +1,24 @@
+# ============================================================
+# Dependencias adicionales para el Sistema de Facturación
+# ============================================================
+
+# Generación de reportes PDF
+reportlab==4.0.7
+
+# Generación de reportes Excel
+openpyxl==3.1.2
+
+# Encriptación de tokens
+cryptography==41.0.7
+
+# Ya incluidas en requirements.txt (verificar):
+# mercadopago==2.2.0  ✅
+# fastapi==0.104.1    ✅
+# sqlalchemy==2.0.23  ✅
+# pydantic[email]     ✅
+# requests           ✅
+
+# ============================================================
+# Instalación:
+# pip install -r billing_requirements.txt
+# ============================================================

@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     API_VERSION: str = "v1"
 
     # URLs
-    FRONTEND_URL: str = "https://males-unless-registration-doug.trycloudflare.com"
+    FRONTEND_URL: str = "https://amp-tiles-clearly-courtesy.trycloudflare.com"
     BACKEND_URL: str =  "https://tentless-zayne-conductorial.ngrok-free.dev"
 
     # Database
