@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     API_VERSION: str = "v1"
 
     # URLs
-    FRONTEND_URL: str = "https://ones-duration-reserves-websites.trycloudflare.com"
-    BACKEND_URL: str = "https://unsinuated-shockheaded-chelsie.ngrok-free.dev"
+    FRONTEND_URL: str = "https://smith-surrounded-atmospheric-briefing.trycloudflare.com"
+    BACKEND_URL: str = "https://prewireless-lilly-imagistic.ngrok-free.dev"
 
     # Database
     DATABASE_URL: str
@@ -54,11 +54,13 @@ class Settings(BaseSettings):
     FERNET_KEY: str
 
     # Email Configuration
-    SMTP_SERVER: str
+    SMTP_SERVER: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
-    SMTP_USERNAME: str
-    SMTP_PASSWORD: str
-    EMAIL_FROM: str = "noreply@ticketify.com"
+    SMTP_USERNAME: str = "lolmathias16@gmail.com"
+    SMTP_PASSWORD: str = "otezitafvbuydsbz"
+    EMAIL_FROM: str = "lolmathias16@gmail.com"
+
+
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
