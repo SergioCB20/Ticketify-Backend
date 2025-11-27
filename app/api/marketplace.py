@@ -99,8 +99,12 @@ async def get_active_listings(
         
         listings = db.scalars(query.offset(offset).limit(page_size)).unique().all()
         
+        # --- CORRECCIÓN AQUÍ ---
+        # Antes tenías settings.BACKEND_URL, lo cambiamos a "seller" para indicar
+        # que debe procesar la foto del usuario que está en el campo 'seller'.
         for listing in listings:
-            process_nested_user_photo(listing, settings.BACKEND_URL)
+            process_nested_user_photo(listing, "seller")
+        # -----------------------
         
         response_data = PaginatedMarketplaceListings(
             items=[ListingResponse.model_validate(listing) for listing in listings],
@@ -119,7 +123,6 @@ async def get_active_listings(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error interno al cargar los listados."
         )
-
 
 @router.post("/listings", response_model=ListingResponse, status_code=status.HTTP_201_CREATED)
 async def create_listing(
