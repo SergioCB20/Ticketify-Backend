@@ -321,15 +321,17 @@ class AuthService:
         "lastName": db_user.lastName,
         "phoneNumber": db_user.phoneNumber,
         "documentId": db_user.documentId,
-        "documentType": db_user.documentType,
+        "documentType": db_user.documentType.value if db_user.documentType else None,
         "country": db_user.country,
         "city": db_user.city,
-        "gender": db_user.gender,
+        "gender": db_user.gender.value if db_user.gender else None,
         "isActive": db_user.isActive,
+        "emailNotifications": db_user.emailNotifications,
         "createdAt": db_user.createdAt,
         "lastLogin": db_user.lastLogin,
         "roles": [r.name for r in db_user.roles],
         "profilePhoto": db_user.get_profile_photo_base64(),
+        "mercadopago": db_user.get_mercadopago_info()
         }
 
         user_response = UserResponse.model_validate(user_dict)
