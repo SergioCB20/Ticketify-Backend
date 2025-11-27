@@ -97,6 +97,7 @@ class User(Base):
     created_promotions = relationship("Promotion", back_populates="created_by")
     purchases = relationship("Purchase", back_populates="user")
     category_preferences = relationship("UserCategoryPreference", back_populates="user", cascade="all, delete-orphan")
+    sent_messages = relationship("EventMessage", back_populates="organizer")
 
     def __repr__(self):
         return f"<User(email='{self.email}')>"

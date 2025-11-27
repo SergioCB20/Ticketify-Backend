@@ -420,6 +420,100 @@ class EmailService:
             attachments=attachments
         )
 
+    def send_organizer_message_email(
+        self,
+        to_email: str,
+        recipient_name: str,
+        organizer_name: str,
+        event_title: str,
+        event_date: str,
+        event_venue: str,
+        subject: str,
+        message_content: str
+    ) -> bool:
+        """Enviar mensaje del organizador a un asistente"""
+        email_subject = f"{subject} - {event_title}"
+
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f3f4f6;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 0;">
+                <tr>
+                    <td align="center">
+                        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                            <tr>
+                                <td style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px 30px; text-align: center;">
+                                    <h1 style="color: #ffffff; margin: 0; font-size: 28px;">✉️ Mensaje del Organizador</h1>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 40px 30px;">
+                                    <h2 style="color: #1f2937; margin: 0 0 20px 0;">Hola {recipient_name},</h2>
+                                    <p style="color: #4b5563; line-height: 1.6; margin: 0 0 20px 0;">
+                                        <strong>{organizer_name}</strong>, el organizador de <strong style="color: #10b981;">{event_title}</strong>, 
+                                        te ha enviado el siguiente mensaje:
+                                    </p>
+                                    <div style="background-color: #f9fafb; border-left: 4px solid #10b981; padding: 24px; margin: 24px 0; border-radius: 4px;">
+                                        <div style="color: #1f2937; line-height: 1.8;">
+                                            {message_content}
+                                        </div>
+                                    </div>
+                                    <div style="border-top: 2px solid #e5e7eb; margin-top: 30px; padding-top: 20px;">
+                                        <h3 style="color: #6b7280; margin: 0 0 15px 0; font-size: 16px;">Detalles del Evento:</h3>
+                                        <table width="100%" cellpadding="8" cellspacing="0">
+                                            <tr>
+                                                <td style="color: #6b7280; font-weight: bold; width: 30%;">📅 Fecha:</td>
+                                                <td style="color: #1f2937;">{event_date}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="color: #6b7280; font-weight: bold;">📍 Lugar:</td>
+                                                <td style="color: #1f2937;">{event_venue}</td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+                                    <p style="color: #6b7280; font-size: 14px; margin: 0 0 10px 0;">
+                                        Este mensaje fue enviado por el organizador del evento. Si tienes preguntas, por favor contacta directamente con ellos.
+                                    </p>
+                                    <p style="color: #9ca3af; font-size: 12px; margin: 0;">
+                                        © {datetime.now().year} {settings.APP_NAME}. Todos los derechos reservados.
+                                    </p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        """
+
+        text_content = f"""
+        Hola {recipient_name},
+
+        {organizer_name}, el organizador de {event_title}, te ha enviado el siguiente mensaje:
+
+        {message_content}
+
+        Detalles del Evento:
+        📅 Fecha: {event_date}
+        📍 Lugar: {event_venue}
+
+        Este mensaje fue enviado por el organizador del evento.
+
+        El equipo de {settings.APP_NAME}
+        """
+
+        return self.send_email(to_email, email_subject, html_content, text_content)
+
     def send_new_event_notification(
         self,
         to_email: str,
