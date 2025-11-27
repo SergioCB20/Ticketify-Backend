@@ -66,7 +66,7 @@ class MarketplaceService:
             )
             self.db.add(new_payment)
             self.db.flush()  # Para obtener el ID
-            
+
             logger.info(f"✅ Payment created: {new_payment.id}")
             
             # 2. Obtener el ticket original
@@ -100,7 +100,12 @@ class MarketplaceService:
             
             # Generar QR para el nuevo ticket
             new_ticket.generate_qr()
-            logger.info(f"✅ Nuevo ticket creado: {new_ticket.id} con QR generado")
+
+            # 🔍 DEBUG REAL: Mostrar primeras letras del QR
+            try:
+                logger.info(f"🟢 QR generado para ticket {new_ticket.id}: {new_ticket.qrCode[:60]}...")
+            except Exception:
+                logger.warning(f"⚠ QR no tiene datos en new_ticket.qrCode justo después de generate_qr()")
             
             # 5. Actualizar el listing como VENDIDO
             listing.status = ListingStatus.SOLD
@@ -141,8 +146,19 @@ class MarketplaceService:
             )
 
             # 2. Generar imagen QR en base64
+            from app.utils.imgbb_upload import upload_qr_to_imgbb
+
+            # genera el QR EN BASE64 como ya lo haces
             qr_image_base64 = generate_qr_image(qr_payload)
 
+            # súbelo a imgbb
+            qr_url = upload_qr_to_imgbb(qr_image_base64)
+
+            # fallback si falla (caso raro)
+            if not qr_url:
+                qr_url = qr_image_base64
+
+            
             # 3. Crear HTML del correo del comprador
             buyer_html = f"""
             <!DOCTYPE html>
@@ -160,7 +176,7 @@ class MarketplaceService:
             <p>Tu compra ha sido confirmada. Aquí está tu ticket para el evento:</p>
 
             <div style="margin: 20px 0;">
-            <img src="{qr_image_base64}" alt="QR del ticket" style="width: 250px;" />
+            <img src="{qr_url}" alt="QR del ticket" style="width: 250px;" />
             </div>
 
             <p><strong>Evento:</strong> {event.title}</p>
