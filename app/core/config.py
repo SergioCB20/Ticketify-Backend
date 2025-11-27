@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     API_VERSION: str = "v1"
 
     # URLs
-    FRONTEND_URL: str = "https://nottingham-portland-passion-newcastle.trycloudflare.com"
-    BACKEND_URL: str = "https://garishly-peckish-eula.ngrok-free.dev"
+    FRONTEND_URL: str = "https://walking-lol-prev-varying.trycloudflare.com"
+    BACKEND_URL: str = "https://prewireless-lilly-imagistic.ngrok-free.dev"
 
     # Database
     DATABASE_URL: str
@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-
+    IMGBB_API_KEY: str
     # CORS
     ALLOWED_HOSTS: List[str] = ["*"] #cambiar en produccion, solo es para que no falle localmente xd (muchos dominios nuevos)
 
