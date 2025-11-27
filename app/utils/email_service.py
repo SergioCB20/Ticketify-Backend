@@ -10,7 +10,10 @@ from email.mime.text import MIMEText
 from typing import Optional
 
 from app.core.config import settings
-
+from email.mime.base import MIMEBase
+from email.mime.image import MIMEImage
+from email import encoders
+import base64
 
 class EmailService:
     """Servicio para enviar correos electrónicos"""
@@ -273,6 +276,150 @@ class EmailService:
         text_content = "Este es un email de prueba del sistema de correos de Ticketify."
 
         return self.send_email(to_email, subject, html_content, text_content)
+
+    def send_email_with_attachments(
+        self,
+        to_email: str,
+        subject: str,
+        html_content: str,
+        text_content: Optional[str],
+        attachments: list  # cada item: {cid, filename, content(base64)}
+    ) -> bool:
+        """
+        Enviar correo con soporte para:
+        - HTML
+        - Texto plano
+        - Imágenes inline (QR) vía CID
+        - Adjuntos
+        """
+        try:
+            msg = MIMEMultipart('related')  # necesario para inline images
+            msg['From'] = self.from_email
+            msg['To'] = to_email
+            msg['Subject'] = subject
+
+            # Parte alternativa (text + html)
+            alternative_part = MIMEMultipart('alternative')
+
+            if text_content:
+                text_part = MIMEText(text_content, 'plain')
+                alternative_part.attach(text_part)
+
+            html_part = MIMEText(html_content, 'html')
+            alternative_part.attach(html_part)
+
+            msg.attach(alternative_part)
+
+            # Procesar adjuntos (imágenes QR)
+            for att in attachments:
+                img_data = base64.b64decode(att["content"])
+                img = MIMEImage(img_data, name=att["filename"])
+                img.add_header('Content-ID', f"<{att['cid']}>")
+                img.add_header('Content-Disposition', 'inline', filename=att["filename"])
+                msg.attach(img)
+
+            # Enviar email
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                server.starttls()
+                server.login(self.username, self.password)
+                server.send_message(msg)
+
+            print(f"✅ Email enviado a {to_email}")
+            return True
+
+        except Exception as e:
+            print(f"❌ Error al enviar email a {to_email}: {str(e)}")
+            return False
+
+    def send_ticket_email(
+        self,
+        to_email: str,
+        first_name: str,
+        event_title: str,
+        event_date: str,
+        event_venue: str,
+        tickets: list  # [{"id": "...", "qrCode": "...", "price": 35.0}, ...]
+    ) -> bool:
+        """Enviar correo con los tickets y sus códigos QR"""
+
+        subject = f"🎟 Tus tickets para {event_title} están listos"
+
+        # -------- Construir el HTML para los tickets ----------
+        tickets_html = ""
+        attachments = []
+
+        for t in tickets:
+            ticket_id = t["id"]
+            qr_base64 = t["qrCode"]
+
+            # Limpiar base64 (remover "data:image/png;base64,")
+            base64_clean = qr_base64.split(",", 1)[1]
+
+            # Agregar inline-img por CID
+            cid = f"ticketqr-{ticket_id}"
+
+            tickets_html += f"""
+            <div style="border:1px solid #e5e7eb; padding:20px; border-radius:12px; margin-bottom:15px;">
+                <h3 style="margin:0 0 10px 0;">Ticket #{ticket_id}</h3>
+                <p style="margin:0 0 10px 0;">Precio: <strong>S/ {t['price']}</strong></p>
+
+                <img 
+                    src="cid:{cid}" 
+                    alt="Código QR del Ticket" 
+                    style="width:200px; height:200px; border-radius:8px; border:1px solid #ccc;" 
+                />
+            </div>
+            """
+
+            # Agregar como adjunto
+            attachments.append({
+                "cid": cid,
+                "filename": f"ticket-{ticket_id}.png",
+                "content": base64_clean
+            })
+
+        # -------- HTML del correo ----------
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <body style="font-family: Arial, sans-serif; background:#f3f4f6; padding:30px;">
+            <div style="max-width:600px; margin:auto; background:white; padding:30px; border-radius:12px;">
+                
+                <h2 style="color:#a855f7; margin-top:0;">🎫 ¡Aquí están tus tickets, {first_name}!</h2>
+
+                <p style="color:#374151;">
+                    Gracias por tu compra. Hemos preparado tus tickets para el evento:
+                </p>
+
+                <div style="background:#f9fafb; padding:15px; border-radius:8px; margin-bottom:20px;">
+                    <p style="margin:0;"><strong>🎉 {event_title}</strong></p>
+                    <p style="margin:0;">📅 {event_date}</p>
+                    <p style="margin:0;">📍 {event_venue}</p>
+                </div>
+
+                <h3 style="color:#4b5563;">Tus Tickets:</h3>
+                {tickets_html}
+
+                <p style="color:#6b7280; font-size:12px; margin-top:40px;">
+                    Este es un correo automático. No responder.
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+
+        # Texto plano alternativo
+        text_content = "Tus tickets están listos. Revisa la versión HTML para ver los QR."
+
+        # -------- Llamar al método mejorado send_email --------
+        return self.send_email_with_attachments(
+            to_email=to_email,
+            subject=subject,
+            html_content=html_content,
+            text_content=text_content,
+            attachments=attachments
+        )
+
 
 
 # Instancia global del servicio
