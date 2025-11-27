@@ -91,14 +91,14 @@ async def mercadopago_webhook(
     """
     try:
         body = await request.json()
-        logger.info(f"🔔 Webhook recibido: {body}")
+        print(f"🔔 Webhook recibido: {body}")
         
         topic = body.get("topic")
         action = body.get("action")
         
         # Solo procesar notificaciones de pago
         if topic == "payment" or action == "payment.created":
-            payment_id = body.get("data", {}).get("id")
+            payment_id = body.get("resource")
             if not payment_id:
                 logger.warning("⚠️ Webhook sin payment_id")
                 return {"status": "ok"}
