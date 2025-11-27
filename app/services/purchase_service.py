@@ -13,7 +13,7 @@ from app.models.event import Event
 from app.models.user import User
 from app.models.promotion import Promotion
 # Si tienes qr_generator.py, impórtalo. Si no, comenta esta línea.
-#from app.utils.qr_generator import generate_qr_code 
+from app.utils.qr_generator import generate_ticket_qr_data, generate_qr_image
 
 logger = logging.getLogger(__name__)
 
@@ -247,10 +247,14 @@ class PurchaseService:
                     #     new_ticket.qr_code = generate_qr_code(qr_content)
                     # except Exception as e:
                     #     logger.warning(f"No se pudo generar QR: {e}")
-                    
+                   
+                    qr_payload = generate_ticket_qr_data(str(new_ticket.id), str(purchase.event_id))
+                    new_ticket.qrCode = generate_qr_image(qr_payload)
+
+                    logger.info(f"🟢 QR generado (purchase) → {new_ticket.id}: {new_ticket.qrCode[:60]}")
+
                     db.add(new_ticket)
                     tickets_created += 1
-                    logger.info(f"✅ Ticket {i+1}/{purchase.quantity} created")
                     
                 except Exception as ticket_error:
                     logger.error(f"❌ Error creating ticket {i+1}: {str(ticket_error)}")
