@@ -13,6 +13,7 @@ from app.models.user_category_preference import UserCategoryPreference
 from app.models.event import Event, EventStatus
 from app.models.event_category import EventCategory
 from app.models.event_schedule import EventSchedule
+from app.models.event_message import EventMessage, MessageType
 
 # Ticket models
 from app.models.ticket import Ticket, TicketStatus
@@ -63,6 +64,8 @@ __all__ = [
     "EventStatus",
     "EventCategory",
     "EventSchedule",
+    "EventMessage",
+    "MessageType",
     
     # Tickets
     "Ticket",
