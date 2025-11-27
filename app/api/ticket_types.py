@@ -11,7 +11,8 @@ from app.schemas.ticket_type import (
     TicketTypeResponse,
     TicketTypeCreate,
     TicketTypeUpdate,
-    TicketTypeBatchCreate
+    TicketTypeBatchCreate,
+    TicketTypeBatchUpdate
 )
 
 router = APIRouter(prefix="/ticket-types", tags=["Ticket Types"])
@@ -119,3 +120,20 @@ def delete_ticket_type(
     """
     ticket_type_service.delete_ticket_type(ticket_type_id)
     return None
+
+@router.put("/event/{event_id}/batch", response_model=List[TicketTypeResponse])
+def update_ticket_types_batch(
+    event_id: UUID,
+    batch_data: TicketTypeBatchUpdate,
+    ticket_type_service: TicketTypeService = Depends(get_ticket_type_service),
+):
+    """
+    Actualizar en bloque los tipos de entrada de un evento:
+    - Actualiza los que vienen con id
+    - Crea nuevos si vienen sin id
+    - Elimina los que ya no vienen (si no tienen ventas)
+    """
+    return ticket_type_service.update_ticket_types_batch(
+        event_id,
+        batch_data.ticketTypes,
+    )

@@ -53,6 +53,44 @@ class TicketTypeCreate(TicketTypeBase):
             }
         }
 
+# ============= UPDATE SCHEMAS =============
+
+class TicketTypeUpdate(BaseModel):
+    """Schema para actualizar un tipo de entrada (todos los campos opcionales)"""
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = None
+    price: Optional[float] = Field(None, ge=0)
+    quantity_available: Optional[int] = Field(None, gt=0)
+    min_purchase: Optional[int] = Field(None, ge=1)
+    max_purchase: Optional[int] = Field(None, ge=1)
+    sale_start_date: Optional[datetime] = None
+    sale_end_date: Optional[datetime] = None
+    is_active: Optional[bool] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "name": "General Actualizado",
+                "price": 60.00,
+                "quantity_available": 150
+            }
+        }
+
+class TicketTypeUpdateItem(BaseModel):
+    """Item usado en el batch de edición de tipos de entrada"""
+    id: Optional[UUID] = None  # None => crear nuevo
+    name: str
+    description: Optional[str] = None
+    price: float
+    quantity: int = Field(..., gt=0, alias="quantity")
+    maxPerPurchase: Optional[int] = Field(None, ge=1)
+
+    class Config:
+        populate_by_name = True
+
+class TicketTypeBatchUpdate(BaseModel):
+    eventId: UUID
+    ticketTypes: List[TicketTypeUpdateItem] # puede traer id=None para crear
 
 class TicketTypeBatchCreate(BaseModel):
     """Schema para crear múltiples tipos de entrada a la vez"""
@@ -80,31 +118,6 @@ class TicketTypeBatchCreate(BaseModel):
                 ]
             }
         }
-
-
-# ============= UPDATE SCHEMAS =============
-
-class TicketTypeUpdate(BaseModel):
-    """Schema para actualizar un tipo de entrada (todos los campos opcionales)"""
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = None
-    price: Optional[float] = Field(None, ge=0)
-    quantity_available: Optional[int] = Field(None, gt=0)
-    min_purchase: Optional[int] = Field(None, ge=1)
-    max_purchase: Optional[int] = Field(None, ge=1)
-    sale_start_date: Optional[datetime] = None
-    sale_end_date: Optional[datetime] = None
-    is_active: Optional[bool] = None
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "name": "General Actualizado",
-                "price": 60.00,
-                "quantity_available": 150
-            }
-        }
-
 
 # ============= RESPONSE SCHEMAS =============
 
