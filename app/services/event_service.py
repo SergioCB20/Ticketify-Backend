@@ -303,8 +303,75 @@ class EventService:
         except KeyError:
             raise HTTPException(status_code=400, detail="Estado inválido")
 
+        # Verificar si está cambiando a PUBLISHED
+        old_status = event.status
         updated = self.event_repo.update_event_status(event_id, status_enum)
+
+        # Si el evento cambió a PUBLISHED, enviar notificaciones
+        if old_status != EventStatus.PUBLISHED and status_enum == EventStatus.PUBLISHED:
+            self._send_new_event_notifications(updated)
+
         return self._event_to_response(updated)
+
+    def _send_new_event_notifications(self, event):
+        """Enviar notificaciones por email a usuarios suscritos a la categoría del evento"""
+        try:
+            from app.services.preferences_service import PreferencesService
+            from app.utils.email_service import email_service
+
+            # Obtener usuarios suscritos a esta categoría
+            # Usamos 24 horas como cooldown para evitar spam
+            preferences_service = PreferencesService(self.db)
+            subscribers = preferences_service.get_users_subscribed_to_category(
+                category_id=event.category_id,
+                hours_since_last_notification=24  # 24 horas de cooldown
+            )
+
+            if not subscribers:
+                print(f"[NOTIFICATION] No hay usuarios suscritos a la categoría del evento {event.title}")
+                return
+
+            # Obtener información de la categoría
+            category = event.category
+            category_name = category.name if category else "Sin categoría"
+
+            # Formatear fecha
+            event_date = event.startDate.strftime("%d/%m/%Y %H:%M") if event.startDate else "Por confirmar"
+
+            # URL del evento (ajustar según tu frontend)
+            frontend_url = "http://localhost:3000"  # Cambiar en producción
+            event_url = f"{frontend_url}/events/{event.id}"
+
+            # Enviar emails a cada suscriptor
+            notifications_sent = 0
+            for user in subscribers:
+                try:
+                    success = email_service.send_new_event_notification(
+                        to_email=user.email,
+                        first_name=user.firstName,
+                        event_title=event.title,
+                        event_description=event.description or "Sin descripción",
+                        category_name=category_name,
+                        event_date=event_date,
+                        event_location=event.venue or "Por confirmar",
+                        event_url=event_url
+                    )
+
+                    if success:
+                        # Marcar que se envió la notificación
+                        preferences_service.mark_notification_sent(user.id, event.category_id)
+                        notifications_sent += 1
+                except Exception as e:
+                    print(f"[ERROR] Error enviando notificación a {user.email}: {str(e)}")
+                    continue
+
+            print(f"[NOTIFICATION] Se enviaron {notifications_sent} notificaciones para el evento '{event.title}'")
+
+        except Exception as e:
+            # No fallar la actualización del evento si falla el envío de notificaciones
+            print(f"[ERROR] Error en el sistema de notificaciones: {str(e)}")
+            import traceback
+            traceback.print_exc()
 
     # =========================================================
     # 🔹 Listar próximos / destacados

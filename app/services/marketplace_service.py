@@ -11,6 +11,11 @@ from app.models.ticket import Ticket, TicketStatus
 from app.models.ticket_transfer import TicketTransfer
 from app.models.payment import Payment, PaymentMethod, PaymentStatus
 from app.models.user import User
+#nuevo para correos
+from app.utils.email_service import email_service
+from app.utils.qr_generator import generate_qr_image, generate_ticket_qr_data
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +125,104 @@ class MarketplaceService:
             # 7. Commit de todas las operaciones
             self.db.commit()
             self.db.refresh(new_ticket)
+
+            # -------------------------------------------
+            # 8. Enviar correos al comprador y vendedor
+            # -------------------------------------------
+
+            buyer = buyer
+            seller = listing.seller
+            event = original_ticket.event
+
+            # 1. Generar el contenido del QR del ticket
+            qr_payload = generate_ticket_qr_data(
+                ticket_id=str(new_ticket.id),
+                event_id=str(event.id)
+            )
+
+            # 2. Generar imagen QR en base64
+            qr_image_base64 = generate_qr_image(qr_payload)
+
+            # 3. Crear HTML del correo del comprador
+            buyer_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <meta charset="UTF-8" />
+            <title>Tu Ticket - Ticketify</title>
+            </head>
+            <body style="font-family: Arial; padding: 20px;">
+
+            <h2 style="color: #7c3aed;">🎫 Tu entrada para: {event.title}</h2>
+
+            <p>Hola {buyer.firstName},</p>
+
+            <p>Tu compra ha sido confirmada. Aquí está tu ticket para el evento:</p>
+
+            <div style="margin: 20px 0;">
+            <img src="{qr_image_base64}" alt="QR del ticket" style="width: 250px;" />
+            </div>
+
+            <p><strong>Evento:</strong> {event.title}</p>
+            <p><strong>Fecha:</strong> {event.startDate}</p>
+            <p><strong>Precio:</strong> S/ {listing.price}</p>
+            <p><strong>ID del Ticket:</strong> {new_ticket.id}</p>
+
+            <br>
+            <p>¡Gracias por usar <strong>Ticketify</strong>!</p>
+
+            </body>
+            </html>
+            """
+
+
+            # 4. Enviar email al comprador
+            email_service.send_email(
+                to_email=buyer.email,
+                subject=f"Tu entrada para {event.title}",
+                html_content=buyer_html,
+                text_content="Tu ticket está listo."
+            )
+
+            # 5. Crear HTML del correo del vendedor
+            seller_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <meta charset="UTF-8" />
+            <title>Ticket Vendido - Ticketify</title>
+            </head>
+            <body style="font-family: Arial; padding: 20px;">
+
+            <h2 style="color: #10b981;">🎉 ¡Tu ticket ha sido vendido!</h2>
+
+            <p>Hola {seller.firstName},</p>
+
+            <p>Te informamos que tu ticket para <strong>{event.title}</strong> ha sido vendido.</p>
+
+            <p><strong>Comprador:</strong> {buyer.firstName}</p>
+            <p><strong>Precio de venta:</strong> S/ {listing.price}</p>
+
+            <br>
+            <p>¡Gracias por usar <strong>Ticketify</strong> para vender tus entradas!</p>
+
+            </body>
+            </html>
+            """
+
+
+            # 6. Enviar email al vendedor
+            email_service.send_email(
+                to_email=seller.email,
+                subject="Tu ticket ha sido vendido",
+                html_content=seller_html,
+                text_content="Tu ticket ha sido vendido."
+            )
+
+
+
+
+
             
             logger.info(f"✅ Transferencia de marketplace completada exitosamente")
             logger.info(f"💰 IMPORTANTE: El pago está en la cuenta de la plataforma")

@@ -109,16 +109,10 @@ class EventRepository:
             .all()
         )
 
-    def get_events_by_organizer_id(self, organizer_id: UUID) -> List[Event]:
+    def get_events_by_organizer_id(self, organizer_id: UUID):
         return (
             self.db.query(Event)
-            .options(
-                joinedload(Event.organizer),
-                joinedload(Event.category),
-                joinedload(Event.ticket_types)
-            )
             .filter(Event.organizer_id == organizer_id)
-            .order_by(Event.createdAt.desc())
             .all()
         )
 
