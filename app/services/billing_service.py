@@ -38,8 +38,8 @@ class BillingService:
     """Servicio para gestión de facturación de organizadores"""
     
     # Configuración de comisiones
-    MERCADOPAGO_COMMISSION_RATE = Decimal('0.0499')  # 4.99%
-    PLATFORM_COMMISSION_RATE = Decimal('0.03')  # 3%
+    MERCADOPAGO_COMMISSION_RATE = Decimal('0.00')  # 5% (0%)
+    PLATFORM_COMMISSION_RATE = Decimal('0.00')  # 3% (0%)
     ACCREDITATION_DAYS = 14  # Días para acreditación
     
     def __init__(self, db: Session):
