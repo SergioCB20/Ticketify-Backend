@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from datetime import datetime, timezone
 from decimal import Decimal
 import uuid
@@ -11,7 +12,7 @@ from app.models.ticket import Ticket, TicketStatus
 from app.models.ticket_type import TicketType
 from app.models.event import Event
 from app.models.user import User
-from app.models.promotion import Promotion
+from app.models.promotion import Promotion, PromotionStatus
 from app.utils.email_service import email_service
 # Si tienes qr_generator.py, impórtalo. Si no, comenta esta línea.
 from app.utils.qr_generator import generate_ticket_qr_data, generate_qr_image
@@ -114,26 +115,33 @@ class PurchaseService:
                 "ticket_type": ticket_type,
                 "quantity": qty
             })
-            
-            mp_items.append({
-                "id": str(ticket_type.id),
-                "title": f"{event.title} - {ticket_type.name}",
-                "quantity": qty,
-                "unit_price": float(ticket_type.price),
-                "currency_id": "PEN"
-            })
 
         # 3. Validar Promoción
         promotion = None
-        if promotion_code:
-            promotion = db.query(Promotion).filter(
-                Promotion.code == promotion_code,
+        print(">>> PROMOTION CODE RECIBIDO:", promotion_code)
+        promotion = db.query(Promotion).filter(
+            Promotion.code == promotion_code,
+            Promotion.status == PromotionStatus.ACTIVE,
+            Promotion.start_date <= datetime.now(timezone.utc),
+            Promotion.end_date >= datetime.now(timezone.utc),
+            or_(
                 Promotion.event_id == event.id,
-                Promotion.is_active == True
-            ).first()
+                Promotion.applies_to_all_events == True
+            )
+        ).first()
+
 
         # 4. Calcular montos
         amounts = PurchaseService.calculate_purchase_amount(ticket_selections, promotion)
+
+        # 4.1 Crear item final para Mercado Pago
+        mp_items = [{
+            "id": str(event.id),
+            "title": f"{event.title} - Entradas",
+            "quantity": 1,
+            "unit_price": float(amounts["total"]),
+            "currency_id": "PEN"
+        }]
 
         # --- CÁLCULO DEL UNIT_PRICE (Requerido por el modelo Purchase) ---
         total_qty = sum(t["quantity"] for t in ticket_selections)
