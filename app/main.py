@@ -16,6 +16,10 @@ from app.core.config import settings
 from app.api import api_router
 from app.core.database import Base, engine
 
+import mercadopago
+
+sdk = mercadopago.SDK("APP_USR-4797791383667392-112319-b33761f3108e016aa8ea25a9ea42356e-3008632483")
+
 # Crear tablas si no existen
 Base.metadata.create_all(bind=engine)
 
