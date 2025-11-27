@@ -12,6 +12,7 @@ from app.models.ticket_type import TicketType
 from app.models.event import Event
 from app.models.user import User
 from app.models.promotion import Promotion
+from app.utils.email_service import email_service
 # Si tienes qr_generator.py, impórtalo. Si no, comenta esta línea.
 from app.utils.qr_generator import generate_ticket_qr_data, generate_qr_image
 
@@ -254,7 +255,11 @@ class PurchaseService:
                     logger.info(f"🟢 QR generado (purchase) → {new_ticket.id}: {new_ticket.qrCode[:60]}")
 
                     db.add(new_ticket)
+                    db.flush()
+                    new_ticket.generate_qr()
+                    
                     tickets_created += 1
+                    logger.info(f"✅ Ticket {i+1}/{purchase.quantity} created with QR")
                     
                 except Exception as ticket_error:
                     logger.error(f"❌ Error creating ticket {i+1}: {str(ticket_error)}")
@@ -271,7 +276,39 @@ class PurchaseService:
             # 7. Flush para guardar cambios
             db.flush()
             logger.info(f"✅ Compra {purchase.id} finalizada exitosamente. {tickets_created} tickets creados")
-            
+            # Cargar evento y usuario (para evitar lazy loading)
+            event = db.query(Event).filter(Event.id == purchase.event_id).first()
+            user = db.query(User).filter(User.id == purchase.user_id).first()
+
+            if not event:
+                raise Exception("Evento no encontrado durante finalización")
+            if not user:
+                raise Exception("Usuario no encontrado durante finalización")
+            try:
+                # Preparar datos de tickets
+                ticket_data = [
+                    {
+                        "id": str(t.id),
+                        "qrCode": t.qrCode,
+                        "price": float(t.price)
+                    }
+                    for t in purchase.tickets
+                ]
+
+                email_service.send_ticket_email(
+                    to_email=purchase.buyer_email,
+                    first_name=user.firstName if user.firstName else "Cliente",
+                    event_title=event.title,
+                    event_date=event.startDate.strftime("%d/%m/%Y %H:%M"),
+                    event_venue=event.venue,
+                    tickets=ticket_data
+                )
+
+                logger.info(f"📧 Email con tickets enviado correctamente a {purchase.buyer_email}")
+
+            except Exception as email_error:
+                logger.error(f"❌ Error enviando email con tickets: {str(email_error)}")
+
             return purchase
 
         except Exception as e:

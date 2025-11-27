@@ -72,7 +72,8 @@ class User(Base):
     mercadopagoEmail = Column(String(255), nullable=True)  # Email de su cuenta MP
     # Status
     isActive = Column(Boolean, default=True, nullable=False)  # Renombrado de is_active
-    
+    emailNotifications = Column(Boolean, default=True, nullable=False)  # Recibir notificaciones por email
+
     # Timestamps
     createdAt = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     lastLogin = Column(DateTime(timezone=True), nullable=True)
@@ -95,6 +96,8 @@ class User(Base):
     ticket_transfers_to = relationship("TicketTransfer", foreign_keys="TicketTransfer.to_user_id", back_populates="to_user")
     created_promotions = relationship("Promotion", back_populates="created_by")
     purchases = relationship("Purchase", back_populates="user")
+    category_preferences = relationship("UserCategoryPreference", back_populates="user", cascade="all, delete-orphan")
+
     def __repr__(self):
         return f"<User(email='{self.email}')>"
     

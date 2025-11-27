@@ -177,6 +177,7 @@ class UserResponse(BaseModel):
     gender: Optional[str] = None
     profilePhoto: Optional[str] = None
     isActive: bool
+    emailNotifications: bool = True  # Recibir notificaciones por email
     roles: List[str] = []  # ✅ Lista de roles del usuario
     createdAt: datetime
     lastLogin: Optional[datetime] = None
