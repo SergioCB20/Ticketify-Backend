@@ -108,22 +108,28 @@ async def get_my_events(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
+    """
+    Obtener todos los eventos creados por el usuario organizador autenticado
+    """
     event_service = EventService(db)
     events = event_service.get_events_by_organizer(current_user.id)
 
-    # 🔥 Convertir Event → OrganizerEventResponse
+    # Convertir Event → OrganizerEventResponse
     organizer_events = []
     for ev in events:
-        organizer_events.append({
-            "id": str(ev.id),
-            "title": ev.title,
-            "date": ev.startDate.isoformat(),
-            "location": ev.venue,
-            "totalTickets": ev.totalCapacity,
-            "soldTickets": sum(tt['sold_quantity'] or 0 for tt in ev.ticket_types),
-            "status": ev.status.value if hasattr(ev.status, "value") else ev.status,
-            "imageUrl": ev.photoUrl
-        })
+        # Calcular tickets vendidos sumando sold_quantity de todos los ticket_types
+        sold_tickets = sum(tt.sold_quantity or 0 for tt in (ev.ticket_types or []))
+        
+        organizer_events.append(OrganizerEventResponse(
+            id=str(ev.id),
+            title=ev.title,
+            date=ev.startDate.isoformat(),
+            location=ev.venue,
+            totalTickets=ev.totalCapacity,
+            soldTickets=sold_tickets,
+            status=ev.status.value if hasattr(ev.status, "value") else ev.status,
+            imageUrl=f"/api/events/{ev.id}/photo" if ev.photo else None
+        ))
 
     return organizer_events
 

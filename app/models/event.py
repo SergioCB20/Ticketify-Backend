@@ -61,6 +61,7 @@ class Event(Base):
     analytics = relationship("Analytics", back_populates="event", uselist=False)
     purchases = relationship("Purchase", back_populates="event")
     promotions = relationship("Promotion", back_populates="event", cascade="all, delete-orphan", passive_deletes=True)
+    event_messages = relationship("EventMessage", back_populates="event", cascade="all, delete-orphan")
 
     # =========================================================
     # 🔹 Métodos utilitarios

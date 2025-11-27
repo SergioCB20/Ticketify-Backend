@@ -14,6 +14,7 @@ from .emails import router as emails_router
 from .billing import router as billing_router
 from .webhooks import router as webhooks_router
 from .preferences import router as preferences_router
+from .event_messages import router as event_messages_router
 
 # Main API router
 api_router = APIRouter(prefix="/api")
@@ -34,4 +35,5 @@ api_router.include_router(emails_router)
 api_router.include_router(billing_router)
 api_router.include_router(webhooks_router)
 api_router.include_router(preferences_router)
+api_router.include_router(event_messages_router)
 __all__ = ["api_router"]

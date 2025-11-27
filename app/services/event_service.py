@@ -408,6 +408,32 @@ class EventService:
         self.db.refresh(event)
         return event
 
+    # =========================================================
+    # 🔹 Obtener eventos por organizador
+    # =========================================================
+    def get_events_by_organizer(self, organizer_id: UUID) -> List[Event]:
+        """
+        Obtiene todos los eventos de un organizador específico
+        """
+        events = self.db.query(Event).filter(
+            Event.organizer_id == organizer_id
+        ).order_by(Event.startDate.desc()).all()
+        
+        return events
+    
+    def get_events_vigentes_by_organizer(self, organizer_id: UUID) -> List[Event]:
+        """
+        Obtiene eventos vigentes (futuros y no cancelados) de un organizador
+        """
+        now = datetime.now(timezone.utc)
+        events = self.db.query(Event).filter(
+            Event.organizer_id == organizer_id,
+            Event.startDate >= now,
+            Event.status != EventStatus.CANCELLED
+        ).order_by(Event.startDate.asc()).all()
+        
+        return events
+
 
     # =========================================================
     # 🔹 Conversión
