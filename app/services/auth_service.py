@@ -74,10 +74,11 @@ class AuthService:
                 gender=user.gender.value if user.gender else None,
                 profilePhoto=user.get_profile_photo_base64(),
                 isActive=user.isActive,
+                emailNotifications=user.emailNotifications,
                 roles=self._get_user_roles(user),
                 createdAt=user.createdAt,
                 lastLogin=user.lastLogin,
-            mercadopago=user.get_mercadopago_info()  # Info de MercadoPago
+                mercadopago=user.get_mercadopago_info()  # Info de MercadoPago
             )
             
             return AuthResponse(
@@ -139,6 +140,7 @@ class AuthService:
             gender=user.gender.value if user.gender else None,
             profilePhoto=user.get_profile_photo_base64(),
             isActive=user.isActive,
+            emailNotifications=user.emailNotifications,
             roles=self._get_user_roles(user),
             createdAt=user.createdAt,
             lastLogin=datetime.utcnow(),  # Current login

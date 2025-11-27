@@ -10,7 +10,10 @@ from email.mime.text import MIMEText
 from typing import Optional
 
 from app.core.config import settings
-
+from email.mime.base import MIMEBase
+from email.mime.image import MIMEImage
+from email import encoders
+import base64
 
 class EmailService:
     """Servicio para enviar correos electrónicos"""
@@ -271,6 +274,270 @@ class EmailService:
         """
 
         text_content = "Este es un email de prueba del sistema de correos de Ticketify."
+
+        return self.send_email(to_email, subject, html_content, text_content)
+
+    def send_email_with_attachments(
+        self,
+        to_email: str,
+        subject: str,
+        html_content: str,
+        text_content: Optional[str],
+        attachments: list  # cada item: {cid, filename, content(base64)}
+    ) -> bool:
+        """
+        Enviar correo con soporte para:
+        - HTML
+        - Texto plano
+        - Imágenes inline (QR) vía CID
+        - Adjuntos
+        """
+        try:
+            msg = MIMEMultipart('related')  # necesario para inline images
+            msg['From'] = self.from_email
+            msg['To'] = to_email
+            msg['Subject'] = subject
+
+            # Parte alternativa (text + html)
+            alternative_part = MIMEMultipart('alternative')
+
+            if text_content:
+                text_part = MIMEText(text_content, 'plain')
+                alternative_part.attach(text_part)
+
+            html_part = MIMEText(html_content, 'html')
+            alternative_part.attach(html_part)
+
+            msg.attach(alternative_part)
+
+            # Procesar adjuntos (imágenes QR)
+            for att in attachments:
+                img_data = base64.b64decode(att["content"])
+                img = MIMEImage(img_data, name=att["filename"])
+                img.add_header('Content-ID', f"<{att['cid']}>")
+                img.add_header('Content-Disposition', 'inline', filename=att["filename"])
+                msg.attach(img)
+
+            # Enviar email
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                server.starttls()
+                server.login(self.username, self.password)
+                server.send_message(msg)
+
+            print(f"✅ Email enviado a {to_email}")
+            return True
+
+        except Exception as e:
+            print(f"❌ Error al enviar email a {to_email}: {str(e)}")
+            return False
+
+    def send_ticket_email(
+        self,
+        to_email: str,
+        first_name: str,
+        event_title: str,
+        event_date: str,
+        event_venue: str,
+        tickets: list  # [{"id": "...", "qrCode": "...", "price": 35.0}, ...]
+    ) -> bool:
+        """Enviar correo con los tickets y sus códigos QR"""
+
+        subject = f"🎟 Tus tickets para {event_title} están listos"
+
+        # -------- Construir el HTML para los tickets ----------
+        tickets_html = ""
+        attachments = []
+
+        for t in tickets:
+            ticket_id = t["id"]
+            qr_base64 = t["qrCode"]
+
+            # Limpiar base64 (remover "data:image/png;base64,")
+            base64_clean = qr_base64.split(",", 1)[1]
+
+            # Agregar inline-img por CID
+            cid = f"ticketqr-{ticket_id}"
+
+            tickets_html += f"""
+            <div style="border:1px solid #e5e7eb; padding:20px; border-radius:12px; margin-bottom:15px;">
+                <h3 style="margin:0 0 10px 0;">Ticket #{ticket_id}</h3>
+                <p style="margin:0 0 10px 0;">Precio: <strong>S/ {t['price']}</strong></p>
+
+                <img
+                    src="cid:{cid}"
+                    alt="Código QR del Ticket"
+                    style="width:200px; height:200px; border-radius:8px; border:1px solid #ccc;"
+                />
+            </div>
+            """
+
+            # Agregar como adjunto
+            attachments.append({
+                "cid": cid,
+                "filename": f"ticket-{ticket_id}.png",
+                "content": base64_clean
+            })
+
+        # -------- HTML del correo ----------
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <body style="font-family: Arial, sans-serif; background:#f3f4f6; padding:30px;">
+            <div style="max-width:600px; margin:auto; background:white; padding:30px; border-radius:12px;">
+
+                <h2 style="color:#a855f7; margin-top:0;">🎫 ¡Aquí están tus tickets, {first_name}!</h2>
+
+                <p style="color:#374151;">
+                    Gracias por tu compra. Hemos preparado tus tickets para el evento:
+                </p>
+
+                <div style="background:#f9fafb; padding:15px; border-radius:8px; margin-bottom:20px;">
+                    <p style="margin:0;"><strong>🎉 {event_title}</strong></p>
+                    <p style="margin:0;">📅 {event_date}</p>
+                    <p style="margin:0;">📍 {event_venue}</p>
+                </div>
+
+                <h3 style="color:#4b5563;">Tus Tickets:</h3>
+                {tickets_html}
+
+                <p style="color:#6b7280; font-size:12px; margin-top:40px;">
+                    Este es un correo automático. No responder.
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+
+        # Texto plano alternativo
+        text_content = "Tus tickets están listos. Revisa la versión HTML para ver los QR."
+
+        # -------- Llamar al método mejorado send_email --------
+        return self.send_email_with_attachments(
+            to_email=to_email,
+            subject=subject,
+            html_content=html_content,
+            text_content=text_content,
+            attachments=attachments
+        )
+
+    def send_new_event_notification(
+        self,
+        to_email: str,
+        first_name: str,
+        event_title: str,
+        event_description: str,
+        category_name: str,
+        event_date: str,
+        event_location: str,
+        event_url: str
+    ) -> bool:
+        """Enviar notificación de nuevo evento en categoría favorita"""
+        subject = f"¡Nuevo evento de {category_name}! 🎉 - {event_title}"
+
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f3f4f6;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 0;">
+                <tr>
+                    <td align="center">
+                        <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                            <tr>
+                                <td style="background: linear-gradient(135deg, #a855f7 0%, #06b6d4 100%); padding: 40px 30px; text-align: center;">
+                                    <h1 style="color: #ffffff; margin: 0; font-size: 32px;">🎉 ¡Nuevo Evento!</h1>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 40px 30px;">
+                                    <h2 style="color: #1f2937; margin: 0 0 20px 0;">Hola {first_name},</h2>
+                                    <p style="color: #4b5563; line-height: 1.6; margin: 0 0 20px 0;">
+                                        ¡Hay un nuevo evento en tu categoría favorita <strong style="color: #a855f7;">{category_name}</strong>!
+                                    </p>
+                                    <div style="border: 2px solid #e5e7eb; border-radius: 8px; padding: 24px; margin: 20px 0; background-color: #f9fafb;">
+                                        <h3 style="color: #a855f7; margin: 0 0 16px 0; font-size: 24px;">{event_title}</h3>
+                                        <p style="color: #4b5563; line-height: 1.6; margin: 0 0 20px 0;">
+                                            {event_description if len(event_description) < 200 else event_description[:200] + '...'}
+                                        </p>
+                                        <table width="100%" cellpadding="8" cellspacing="0">
+                                            <tr>
+                                                <td style="color: #6b7280; font-weight: bold; width: 30%;">📅 Fecha:</td>
+                                                <td style="color: #1f2937;">{event_date}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="color: #6b7280; font-weight: bold;">📍 Lugar:</td>
+                                                <td style="color: #1f2937;">{event_location}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="color: #6b7280; font-weight: bold;">🏷️ Categoría:</td>
+                                                <td style="color: #a855f7; font-weight: bold;">{category_name}</td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 0 30px 40px 30px; text-align: center;">
+                                    <a href="{event_url}"
+                                       style="display: inline-block; background: linear-gradient(135deg, #a855f7 0%, #06b6d4 100%);
+                                              color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 8px;
+                                              font-weight: bold; font-size: 16px; margin-top: 10px;">
+                                        Ver Evento
+                                    </a>
+                                    <p style="color: #6b7280; font-size: 14px; margin: 20px 0 0 0;">
+                                        ¡No te pierdas esta oportunidad! Los cupos son limitados.
+                                    </p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+                                    <p style="color: #6b7280; font-size: 14px; margin: 0 0 10px 0;">
+                                        Recibiste este correo porque tienes <strong>{category_name}</strong> como categoría favorita.
+                                    </p>
+                                    <p style="color: #9ca3af; font-size: 12px; margin: 0;">
+                                        Puedes gestionar tus preferencias en tu perfil.
+                                    </p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="background-color: #1f2937; padding: 30px; text-align: center;">
+                                    <p style="color: #9ca3af; font-size: 14px; margin: 0 0 10px 0;">
+                                        © 2025 {settings.APP_NAME}. Todos los derechos reservados.
+                                    </p>
+                                    <p style="color: #6b7280; font-size: 12px; margin: 0;">
+                                        Este es un correo automático, por favor no responder.
+                                    </p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        """
+
+        text_content = f"""
+        ¡Hola {first_name}!
+
+        Hay un nuevo evento en tu categoría favorita {category_name}:
+
+        {event_title}
+        {event_description[:200] if len(event_description) > 200 else event_description}
+
+        📅 Fecha: {event_date}
+        📍 Lugar: {event_location}
+        🏷️ Categoría: {category_name}
+
+        Ver evento: {event_url}
+
+        ¡No te pierdas esta oportunidad!
+
+        El equipo de {settings.APP_NAME}
+        """
 
         return self.send_email(to_email, subject, html_content, text_content)
 

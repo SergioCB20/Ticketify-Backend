@@ -68,3 +68,7 @@ if __name__ == "__main__":
         port=8000, 
         reload=True
     )
+# SDK de Mercado Pago
+import mercadopago
+# Agrega credenciales
+sdk = mercadopago.SDK("TEST_ACCESS_TOKEN")

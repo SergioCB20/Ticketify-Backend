@@ -40,7 +40,8 @@ class EventCategory(Base):
     
     # Relationships
     events = relationship("Event", back_populates="category")
-    
+    user_preferences = relationship("UserCategoryPreference", back_populates="category", cascade="all, delete-orphan")
+
     def __repr__(self):
         return f"<EventCategory(name='{self.name}', slug='{self.slug}')>"
     

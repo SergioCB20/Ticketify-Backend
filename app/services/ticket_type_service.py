@@ -8,9 +8,12 @@ from app.repositories.event_repository import EventRepository
 from app.schemas.ticket_type import (
     TicketTypeCreate, 
     TicketTypeUpdate, 
-    TicketTypeResponse
+    TicketTypeResponse,
+    TicketTypeUpdateItem
 )
 from app.models.ticket_type import TicketType
+from app.models.event import Event
+
 
 
 class TicketTypeService:
@@ -80,6 +83,58 @@ class TicketTypeService:
         )
         
         return [self._ticket_type_to_response(tt) for tt in ticket_types]
+
+    def update_ticket_types_batch(self, event_id: UUID, items: List[TicketTypeUpdate]):
+        event = self.db.query(Event).filter(Event.id == event_id).first()
+        if not event:
+            raise HTTPException(404, "Evento no encontrado")
+
+        existing = {
+            str(t.id): t
+            for t in self.db.query(TicketType).filter(TicketType.event_id == event_id).all()
+        }
+
+        ids_sent = set()
+
+        for it in items:
+            if it.id:
+                # ACTUALIZAR
+                tt = existing.get(str(it.id))
+                if not tt:
+                    continue
+
+                tt.name = it.name
+                tt.description = it.description
+                tt.price = it.price
+                tt.quantity_available = it.quantity
+                tt.max_purchase = it.maxPerPurchase
+            else:
+                # CREAR NUEVO
+                new_tt = TicketType(
+                    event_id=event_id,
+                    name=it.name,
+                    description=it.description,
+                    price=it.price,
+                    quantity_available=it.quantity,
+                    sold_quantity=0,
+                    max_purchase=it.maxPerPurchase,
+                    min_purchase=1,
+                    is_active=True,
+                )
+                self.db.add(new_tt)
+                self.db.flush()
+                ids_sent.add(str(new_tt.id))
+
+         # ELIMINAR los que ya no existen en el payload
+        for tt_id, tt in existing.items():
+            if tt_id not in ids_sent:
+                # si ya tiene vendidas, no lo borres
+                if tt.sold_quantity and tt.sold_quantity > 0:
+                    continue
+                self.db.delete(tt)
+
+        self.db.commit()
+        return self.get_ticket_types_by_event(event_id, active_only=False)
     
     def get_ticket_type_by_id(self, ticket_type_id: UUID) -> TicketTypeResponse:
         """Get ticket type by ID"""
