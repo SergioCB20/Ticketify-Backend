@@ -18,7 +18,7 @@ from app.schemas.event_message import (
 from app.services.event_message_service import EventMessageService
 
 
-router = APIRouter()
+router = APIRouter(prefix="/events", tags=["Event Messages"])
 
 
 @router.post(
@@ -115,6 +115,44 @@ def get_event_messages(
 
 
 @router.get(
+    "/{event_id}/messages/stats",
+    response_model=MessageStatsResponse,
+    summary="Obtener estadísticas de mensajes",
+    description="Obtiene estadísticas generales de mensajes del evento"
+)
+def get_message_stats(
+    event_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Obtener estadísticas de mensajes del evento.
+    
+    **Requiere autenticación y ser el organizador del evento.**
+    
+    Incluye: total de mensajes, destinatarios, tasa de éxito promedio, etc.
+    """
+    service = EventMessageService(db)
+    
+    # Validar acceso
+    if not service.validate_organizer_access(event_id, current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para ver estadísticas de este evento"
+        )
+    
+    try:
+        stats = service.get_message_stats(event_id)
+        return stats
+    
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al obtener estadísticas: {str(e)}"
+        )
+
+
+@router.get(
     "/{event_id}/messages/{message_id}",
     response_model=EventMessageResponse,
     summary="Obtener detalles de un mensaje",
@@ -187,42 +225,4 @@ def get_event_attendees(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al obtener asistentes: {str(e)}"
-        )
-
-
-@router.get(
-    "/{event_id}/messages/stats",
-    response_model=MessageStatsResponse,
-    summary="Obtener estadísticas de mensajes",
-    description="Obtiene estadísticas generales de mensajes del evento"
-)
-def get_message_stats(
-    event_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Obtener estadísticas de mensajes del evento.
-    
-    **Requiere autenticación y ser el organizador del evento.**
-    
-    Incluye: total de mensajes, destinatarios, tasa de éxito promedio, etc.
-    """
-    service = EventMessageService(db)
-    
-    # Validar acceso
-    if not service.validate_organizer_access(event_id, current_user.id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para ver estadísticas de este evento"
-        )
-    
-    try:
-        stats = service.get_message_stats(event_id)
-        return stats
-    
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al obtener estadísticas: {str(e)}"
         )
