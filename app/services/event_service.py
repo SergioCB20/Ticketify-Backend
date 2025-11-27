@@ -204,7 +204,10 @@ class EventService:
         )
 
         total_pages = (total + page_size - 1) // page_size
-        event_dicts = [e.to_dict() if hasattr(e, "to_dict") else {} for e in events]
+        event_dicts = []
+        for e in events:
+            event_dict = e.to_dict() if hasattr(e, "to_dict") else {}
+            event_dicts.append(event_dict)
 
         return EventSearchResponse(
             events=event_dicts,

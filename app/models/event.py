@@ -128,7 +128,7 @@ class Event(Base):
             "venue": self.venue,
             "totalCapacity": self.totalCapacity,
             "status": self.status.value if hasattr(self.status, "value") else self.status,
-            "photoUrl": f"/events/{self.id}/photo" if self.photo else None,
+            "photoUrl": f"/api/events/{self.id}/photo" if self.photo else None,
             #"multimedia": self.multimedia or [],
             "availableTickets": self.available_tickets,
             "isSoldOut": self.is_sold_out,
