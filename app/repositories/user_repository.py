@@ -64,7 +64,8 @@ class UserRepository:
             country=user_data.country,
             city=user_data.city,
             gender=Gender(user_data.gender.value),
-            isActive=True
+            isActive=True,
+            emailNotifications=user_data.acceptMarketing if user_data.acceptMarketing is not None else False
         )
         
         self.db.add(db_user)
