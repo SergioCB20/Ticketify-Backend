@@ -479,6 +479,6 @@ async def get_listing(
         )
     
     # Procesar la URL de la foto del vendedor
-    process_nested_user_photo(listing, settings.BACKEND_URL)
+    process_nested_user_photo(listing, "seller")
     
     return listing
