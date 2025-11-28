@@ -139,13 +139,14 @@ class User(Base):
                            refresh_token: str, expires_in: int, email: str):
         """Connect MercadoPago account via OAuth (with encrypted tokens)"""
         from datetime import datetime, timedelta, timezone
-        from app.utils.encryption import encrypt_data
+        from app.utils.encryption import EncryptionService
+
         
         self.mercadopagoUserId = user_id
         self.mercadopagoPublicKey = public_key
         # Encriptar tokens antes de guardar
-        self.mercadopagoAccessToken = encrypt_data(access_token)
-        self.mercadopagoRefreshToken = encrypt_data(refresh_token)
+        self.mercadopagoAccessToken = EncryptionService.encrypt(access_token)
+        self.mercadopagoRefreshToken =EncryptionService.encrypt(refresh_token)
         self.mercadopagoTokenExpires = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
         self.isMercadopagoConnected = True
         self.mercadopagoConnectedAt = datetime.now(timezone.utc)

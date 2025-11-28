@@ -85,6 +85,7 @@ async def get_my_tickets(
                 'start_date': ticket.event.startDate.isoformat() if ticket.event.startDate else None,
                 'venue': ticket.event.venue,
                 'cover_image': cover,
+                'photoUrl': ticket.event.photoUrl if hasattr(ticket.event, 'photoUrl') else None,  # ✅ Agregado
             },
             'ticketType': {
                 'id': str(ticket.ticket_type.id),
