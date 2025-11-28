@@ -19,9 +19,9 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     API_VERSION: str = "v1"
 
-    # URLs (Ahora requeridas desde .env)
-    FRONTEND_URL: str
-    BACKEND_URL: str
+    # URLs
+    FRONTEND_URL: str = "https://betting-april-bytes-versus.trycloudflare.com"
+    BACKEND_URL: str = "https://unsinuated-shockheaded-chelsie.ngrok-free.dev"
 
     # Database
     DATABASE_URL: str

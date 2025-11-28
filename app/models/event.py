@@ -114,6 +114,14 @@ class Event(Base):
         if not self.ticket_types:
             return None
         return max((float(tt.price) for tt in self.ticket_types if tt.is_active), default=None)
+    
+    @property
+    def photoUrl(self):
+        """URL de la foto del evento para uso en schemas"""
+        from app.core.config import settings
+        if self.photo:
+            return f"{settings.BACKEND_URL}/api/events/{self.id}/photo"
+        return None
 
     # =========================================================
     # 🔹 Serialización
