@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     API_VERSION: str = "v1"
 
     # URLs
-    FRONTEND_URL: str = "https://protective-omaha-reproduce-nest.trycloudflare.com"
-    BACKEND_URL: str = "https://mindi-defervescent-then.ngrok-free.dev"
+    FRONTEND_URL: str = "https://anaheim-brass-hourly-soldier.trycloudflare.com"
+    BACKEND_URL: str = "https://prewireless-lilly-imagistic.ngrok-free.dev"
 
     # Database
     DATABASE_URL: str
