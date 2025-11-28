@@ -62,7 +62,8 @@ async def get_active_listings(
             )
             .where(
                 MarketplaceListing.status == ListingStatus.ACTIVE,
-                MarketplaceListing.expires_at > datetime.utcnow()
+                MarketplaceListing.expires_at > datetime.utcnow(),
+                Event.startDate >= datetime.utcnow()  # Filtrar eventos que ya empezaron
             )
         )
         

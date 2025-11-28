@@ -226,10 +226,10 @@ class MercadoPagoOAuthService:
             
             # Actualizar con nuevos tokens encriptados
             from datetime import datetime, timedelta, timezone
-            from app.utils.encryption import encrypt_data
+            from app.utils.encryption import EncryptionService
             
-            user.mercadopagoAccessToken = encrypt_data(data["access_token"])
-            user.mercadopagoRefreshToken = encrypt_data(data["refresh_token"])
+            user.mercadopagoAccessToken = EncryptionService.encrypt(data["access_token"])
+            user.mercadopagoRefreshToken = EncryptionService.encrypt(data["refresh_token"])
             user.mercadopagoTokenExpires = datetime.now(timezone.utc) + timedelta(seconds=data["expires_in"])
             
             self.db.commit()
