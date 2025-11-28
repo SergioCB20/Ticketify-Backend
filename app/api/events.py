@@ -87,8 +87,8 @@ def get_active_events(
     status: Optional[str] = Query(None),
     event_service: EventService = Depends(get_event_service)
 ):
-    """Obtener eventos activos (con fecha futura)."""
-    events = event_service.event_repo.get_active_events(skip=skip, limit=limit, status_filter=status)
+    """Obtener eventos activos (con fecha futura y no vencidos)."""
+    events = event_service.get_active_events(skip=skip, limit=limit, status_filter=status)
     return events
 
 

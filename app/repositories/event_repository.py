@@ -101,6 +101,9 @@ class EventRepository:
             query = query.filter(Event.status == status)
         else:
             query = query.filter(Event.status == EventStatus.PUBLISHED)
+        
+        # Solo mostrar eventos que NO han vencido
+        query = query.filter(Event.startDate >= datetime.utcnow())
 
         return (
             query.order_by(Event.startDate.asc())
@@ -134,7 +137,11 @@ class EventRepository:
         venue: Optional[str] = None,
         status: Optional[EventStatus] = None
     ) -> Tuple[List[Event], int]:
-        filters = [Event.status == (status or EventStatus.PUBLISHED)]
+        # Solo mostrar eventos que NO han vencido (startDate >= now)
+        filters = [
+            Event.status == (status or EventStatus.PUBLISHED),
+            Event.startDate >= datetime.utcnow()  # Filtrar eventos vencidos
+        ]
 
         if query:
             filters.append(or_(
