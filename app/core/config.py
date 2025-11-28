@@ -1,5 +1,5 @@
 import json
-from typing import List
+from typing import List, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -19,9 +19,9 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     API_VERSION: str = "v1"
 
-    # URLs
-    FRONTEND_URL: str = "https://protective-omaha-reproduce-nest.trycloudflare.com"
-    BACKEND_URL: str = "https://mindi-defervescent-then.ngrok-free.dev"
+    # URLs (Ahora requeridas desde .env)
+    FRONTEND_URL: str
+    BACKEND_URL: str
 
     # Database
     DATABASE_URL: str
@@ -30,15 +30,17 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    IMGBB_API_KEY: str
-    # CORS
-    ALLOWED_HOSTS: List[str] = ["*"] #cambiar en produccion, solo es para que no falle localmente xd (muchos dominios nuevos)
-
     
-    # NGROK
-    NGROK_URL: str = ""  # URL de ngrok para desarrollo
+    # IMGBB
+    IMGBB_API_KEY: str
+    
+    # CORS
+    ALLOWED_HOSTS: List[str] = ["*"] 
 
-    # MercadoPago
+    # NGROK (Opcional, para desarrollo)
+    NGROK_URL: str = "" 
+
+    # MercadoPago Standard
     MERCADOPAGO_ACCESS_TOKEN: str
     MERCADOPAGO_PUBLIC_KEY: str
     MERCADOPAGO_SANDBOX: bool = True
@@ -50,20 +52,18 @@ class Settings(BaseSettings):
     MERCADOPAGO_REDIRECT_URI: str
     MERCADOPAGO_ENVIRONMENT: str = "sandbox"
     
-    # Encryption (para tokens de vendedores)
+    # Encryption
     FERNET_KEY: str
 
     # Email Configuration
-    SMTP_SERVER: str = "smtp.gmail.com"
-    SMTP_PORT: int = 587
-    SMTP_USERNAME: str = "lolmathias16@gmail.com"
-    SMTP_PASSWORD: str = "otezitafvbuydsbz"
-    EMAIL_FROM: str = "lolmathias16@gmail.com"
-
-
+    SMTP_SERVER: str
+    SMTP_PORT: int
+    SMTP_USERNAME: str
+    SMTP_PASSWORD: str
+    EMAIL_FROM: str
 
     # Redis
-    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_URL: str
 
     # File Upload
     MAX_FILE_SIZE: int = 5 * 1024 * 1024  # 5MB
@@ -89,7 +89,7 @@ class Settings(BaseSettings):
     
     @field_validator("MERCADOPAGO_REDIRECT_URI", mode="before")
     def expand_redirect_uri(cls, v, info):
-        """Expandir ${NGROK_URL} en MERCADOPAGO_REDIRECT_URI"""
+        """Expandir ${NGROK_URL} en MERCADOPAGO_REDIRECT_URI si es necesario"""
         if isinstance(v, str) and "${NGROK_URL}" in v:
             import os
             ngrok_url = os.getenv("NGROK_URL", "")
