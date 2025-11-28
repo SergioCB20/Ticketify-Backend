@@ -89,6 +89,10 @@ class TicketTypeService:
         if not event:
             raise HTTPException(404, "Evento no encontrado")
 
+        #Si no se envían tipos de entrada, NO tocar los existentes
+        if not items:
+            return self.get_ticket_types_by_event(event_id, active_only=False)
+       
         existing = {
             str(t.id): t
             for t in self.db.query(TicketType).filter(TicketType.event_id == event_id).all()
@@ -108,6 +112,7 @@ class TicketTypeService:
                 tt.price = it.price
                 tt.quantity_available = it.quantity
                 tt.max_purchase = it.maxPerPurchase
+                ids_sent.add(str(tt.id))
             else:
                 # CREAR NUEVO
                 new_tt = TicketType(
