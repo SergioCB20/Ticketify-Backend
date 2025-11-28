@@ -142,8 +142,7 @@ class EventSimpleResponse(BaseModel):
     title: str
     startDate: datetime
     venue: str
-    #photoUrl: Optional[str] = None
-    #multimedia: Optional[List[str]] = None
+    photoUrl: Optional[str] = None  # ✅ Activado para marketplace
 
     class Config:
         from_attributes = True

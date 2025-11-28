@@ -157,6 +157,23 @@ async def create_listing(
             detail=f"No puedes vender un ticket que ya está {ticket_to_sell.status.value}."
         )
 
+    # Validar precio máximo (150% del precio original)
+    original_price = ticket_to_sell.price
+    max_allowed_price = original_price * Decimal("1.5")
+    min_allowed_price = original_price * Decimal("0.5")
+    
+    if listing_data.price > max_allowed_price:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"El precio máximo permitido es S/ {max_allowed_price:.2f} (150% del precio original)"
+        )
+    
+    if listing_data.price < min_allowed_price:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"El precio mínimo permitido es S/ {min_allowed_price:.2f} (50% del precio original)"
+        )
+    
     existing_listing = db.query(MarketplaceListing).filter(
         MarketplaceListing.ticket_id == ticket_to_sell.id,
         MarketplaceListing.status == ListingStatus.ACTIVE
