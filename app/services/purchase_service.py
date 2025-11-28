@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import uuid
 import logging
+import json
 from fastapi import HTTPException, status
 
 from app.models.purchase import Purchase, PurchaseStatus
@@ -113,7 +114,8 @@ class PurchaseService:
 
             ticket_selections.append({
                 "ticket_type": ticket_type,
-                "quantity": qty
+                "quantity": qty,
+                "ticket_type_id": str(t_id)  # ✅ Guardar el ID como string para JSON
             })
 
         # 3. Validar Promoción
@@ -151,6 +153,18 @@ class PurchaseService:
             avg_unit_price = Decimal("0.00")
         # -----------------------------------------------------------------
 
+        # ✅ SOLUCIÓN: Guardar los detalles de los tickets en el campo notes como JSON
+        ticket_details = []
+        for selection in ticket_selections:
+            ticket_details.append({
+                "ticket_type_id": selection["ticket_type_id"],
+                "ticket_type_name": selection["ticket_type"].name,
+                "quantity": selection["quantity"],
+                "price": float(selection["ticket_type"].price)
+            })
+        
+        notes_json = json.dumps({"ticket_details": ticket_details})
+
         # 5. Crear la Compra
         new_purchase = Purchase(
             user_id=user_id,
@@ -162,14 +176,17 @@ class PurchaseService:
             tax_amount=amounts["tax_amount"],
             discount_amount=amounts["discount_amount"],
             quantity=total_qty,
-            unit_price=avg_unit_price, # ✅ Campo añadido
+            unit_price=avg_unit_price,
             buyer_email="", 
-            promotion_id=promotion.id if promotion else None
+            promotion_id=promotion.id if promotion else None,
+            notes=notes_json  # ✅ Guardar detalles de tickets
         )
         
         db.add(new_purchase)
         db.commit()
         db.refresh(new_purchase)
+        
+        logger.info(f"✅ Purchase created with ticket details: {notes_json}")
         
         return new_purchase, mp_items
 
@@ -193,34 +210,7 @@ class PurchaseService:
             
             logger.info(f"✅ Purchase status updated to COMPLETED")
             
-            # 2. Obtener el tipo de ticket
-            # NOTA: Esto es simplificado. Idealmente deberías tener una tabla intermedia
-            # purchase_items que contenga el detalle de qué ticket_types y cantidades se compraron.
-            
-            ticket_type_id = purchase.ticket_type_id
-            
-            # Si no hay ticket_type_id en purchase, buscar el primero del evento
-            if not ticket_type_id:
-                logger.warning(f"⚠️ Purchase {purchase.id} no tiene ticket_type_id, buscando fallback")
-                first_tt = db.query(TicketType).filter(
-                    TicketType.event_id == purchase.event_id,
-                    TicketType.is_active == True
-                ).first()
-                
-                if not first_tt:
-                    raise Exception(f"No se encontró ningún tipo de ticket activo para el evento {purchase.event_id}")
-                
-                ticket_type_id = first_tt.id
-                logger.info(f"✅ Usando ticket_type fallback: {ticket_type_id}")
-            
-            # 3. Verificar que el ticket_type existe
-            ticket_type = db.query(TicketType).filter(TicketType.id == ticket_type_id).first()
-            if not ticket_type:
-                raise Exception(f"Ticket type {ticket_type_id} no encontrado")
-            
-            logger.info(f"✅ Ticket type found: {ticket_type.name}")
-            
-            # 4. Crear registro de Payment si no existe
+            # 2. Crear registro de Payment si no existe
             if not purchase.payment_id:
                 new_payment = Payment(
                     user_id=purchase.user_id,
@@ -235,56 +225,92 @@ class PurchaseService:
                 purchase.payment_id = new_payment.id
                 logger.info(f"✅ Payment created: {new_payment.id}")
             
-            # 5. Generar los tickets
-            tickets_created = 0
-            for i in range(purchase.quantity):
+            # 3. ✅ SOLUCIÓN: Obtener los detalles de los tickets desde notes
+            ticket_details = []
+            if purchase.notes:
                 try:
-                    new_ticket = Ticket(
-                        event_id=purchase.event_id,
-                        user_id=purchase.user_id,
-                        purchase_id=purchase.id,
-                        status=TicketStatus.ACTIVE,
-                        ticket_type_id=ticket_type_id,
-                        price=ticket_type.price,
-                        isValid=True,
-                        payment_id=purchase.payment_id  # Campo requerido por el modelo
-                    )
-                    
-                    # Generar QR (si tienes la función descomentada)
-                    # try:
-                    #     qr_content = f"TICKET-{new_ticket.id}"
-                    #     new_ticket.qr_code = generate_qr_code(qr_content)
-                    # except Exception as e:
-                    #     logger.warning(f"No se pudo generar QR: {e}")
-                   
-                    qr_payload = generate_ticket_qr_data(str(new_ticket.id), str(purchase.event_id))
-                    new_ticket.qrCode = generate_qr_image(qr_payload)
-
-                    logger.info(f"🟢 QR generado (purchase) → {new_ticket.id}: {new_ticket.qrCode[:60]}")
-
-                    db.add(new_ticket)
-                    db.flush()
-                    new_ticket.generate_qr()
-                    
-                    tickets_created += 1
-                    logger.info(f"✅ Ticket {i+1}/{purchase.quantity} created with QR")
-                    
-                except Exception as ticket_error:
-                    logger.error(f"❌ Error creating ticket {i+1}: {str(ticket_error)}")
-                    raise Exception(f"Error al crear ticket {i+1}: {str(ticket_error)}")
+                    notes_data = json.loads(purchase.notes)
+                    ticket_details = notes_data.get("ticket_details", [])
+                    logger.info(f"✅ Ticket details loaded from notes: {len(ticket_details)} types")
+                except json.JSONDecodeError as e:
+                    logger.error(f"❌ Error parsing notes JSON: {e}")
             
-            # 6. Actualizar stock vendido
-            try:
-                ticket_type.sold_quantity += purchase.quantity
-                logger.info(f"✅ Stock updated: {ticket_type.name} sold_quantity = {ticket_type.sold_quantity}")
-            except Exception as stock_error:
-                logger.error(f"❌ Error updating stock: {str(stock_error)}")
-                raise Exception(f"Error al actualizar stock: {str(stock_error)}")
+            # Si no hay detalles en notes, usar el fallback anterior
+            if not ticket_details:
+                logger.warning(f"⚠️ No ticket details in notes, using fallback")
+                first_tt = db.query(TicketType).filter(
+                    TicketType.event_id == purchase.event_id,
+                    TicketType.is_active == True
+                ).first()
+                
+                if not first_tt:
+                    raise Exception(f"No se encontró ningún tipo de ticket activo para el evento {purchase.event_id}")
+                
+                ticket_details = [{
+                    "ticket_type_id": str(first_tt.id),
+                    "quantity": purchase.quantity,
+                    "price": float(first_tt.price)
+                }]
             
-            # 7. Flush para guardar cambios
+            # 4. Generar tickets para cada tipo
+            tickets_created = 0
+            for detail in ticket_details:
+                ticket_type_id = detail["ticket_type_id"]
+                quantity = detail["quantity"]
+                
+                # Verificar que el ticket_type existe
+                ticket_type = db.query(TicketType).filter(TicketType.id == ticket_type_id).first()
+                if not ticket_type:
+                    logger.error(f"❌ Ticket type {ticket_type_id} not found, skipping")
+                    continue
+                
+                logger.info(f"✅ Creating {quantity} tickets for type: {ticket_type.name}")
+                
+                # Generar los tickets para este tipo
+                for i in range(quantity):
+                    try:
+                        new_ticket = Ticket(
+                            event_id=purchase.event_id,
+                            user_id=purchase.user_id,
+                            purchase_id=purchase.id,
+                            status=TicketStatus.ACTIVE,
+                            ticket_type_id=ticket_type_id,
+                            price=ticket_type.price,
+                            isValid=True,
+                            payment_id=purchase.payment_id
+                        )
+                        
+                        db.add(new_ticket)
+                        db.flush()  # Para obtener el ID antes de generar el QR
+                        
+                        # Generar QR
+                        try:
+                            qr_payload = generate_ticket_qr_data(str(new_ticket.id), str(purchase.event_id))
+                            new_ticket.qrCode = generate_qr_image(qr_payload)
+                            logger.info(f"✅ QR generated for ticket {new_ticket.id}")
+                        except Exception as qr_error:
+                            logger.warning(f"⚠️ Could not generate QR: {qr_error}")
+                        
+                        tickets_created += 1
+                        logger.info(f"✅ Ticket {tickets_created} created for type {ticket_type.name}")
+                        
+                    except Exception as ticket_error:
+                        logger.error(f"❌ Error creating ticket: {str(ticket_error)}")
+                        raise Exception(f"Error al crear ticket: {str(ticket_error)}")
+                
+                # Actualizar stock vendido para este tipo de ticket
+                try:
+                    ticket_type.sold_quantity += quantity
+                    logger.info(f"✅ Stock updated for {ticket_type.name}: sold_quantity = {ticket_type.sold_quantity}")
+                except Exception as stock_error:
+                    logger.error(f"❌ Error updating stock: {str(stock_error)}")
+                    raise Exception(f"Error al actualizar stock: {str(stock_error)}")
+            
+            # 5. Flush para guardar todos los cambios
             db.flush()
             logger.info(f"✅ Compra {purchase.id} finalizada exitosamente. {tickets_created} tickets creados")
-            # Cargar evento y usuario (para evitar lazy loading)
+            
+            # 6. Enviar email con los tickets
             event = db.query(Event).filter(Event.id == purchase.event_id).first()
             user = db.query(User).filter(User.id == purchase.user_id).first()
 
@@ -292,6 +318,7 @@ class PurchaseService:
                 raise Exception("Evento no encontrado durante finalización")
             if not user:
                 raise Exception("Usuario no encontrado durante finalización")
+            
             try:
                 # Preparar datos de tickets
                 ticket_data = [
